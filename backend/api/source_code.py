@@ -6,7 +6,7 @@ Architecture:
 - ALL operations on the workspace run via `docker exec` into the Exegol container
   because the backend container has no access to ~/.exegol/workspaces/ (not mounted).
 - Only ZIP upload uses a host tmpfile, then copies it into the container with docker cp.
-- The backend only has /var/run/docker.sock mounted, not the workspace volume.
+- The backend talks to Docker via the docker-proxy (DOCKER_HOST), not the workspace volume.
 """
 import asyncio
 import os

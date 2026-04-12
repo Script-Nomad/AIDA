@@ -33,6 +33,37 @@ services:
       timeout: 5s
       retries: 5
 
+  # Docker Socket Proxy — filtered Docker API for the backend.
+  # Only inspect/exec/start allowed; run/create/volumes blocked.
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: aida_docker_proxy
+    restart: unless-stopped
+    environment:
+      POST: 1
+      CONTAINERS: 1
+      EXEC: 1
+      IMAGES: 0
+      VOLUMES: 0
+      NETWORKS: 0
+      SERVICES: 0
+      TASKS: 0
+      NODES: 0
+      SWARM: 0
+      BUILD: 0
+      AUTH: 0
+      SECRETS: 0
+      PLUGINS: 0
+      INFO: 0
+      VERSION: 0
+      EVENTS: 0
+      DISTRIBUTION: 0
+      SYSTEM: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - aida-network
+
   backend:
     image: vasco0x4/aida-backend:latest
     container_name: aida_backend
@@ -46,16 +77,18 @@ services:
       ENVIRONMENT: production
       DEFAULT_CONTAINER_NAME: aida-pentest
       CONTAINER_WORKSPACE_BASE: /workspace
+      DOCKER_HOST: tcp://docker-proxy:2375
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - backend_logs:/app/logs
     networks:
       - aida-network
     depends_on:
       postgres:
         condition: service_healthy
+      docker-proxy:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -89,7 +122,7 @@ services:
     volumes:
       - workspaces:/workspace
     networks:
-      - aida-network
+      - pentest-network
 
 volumes:
   postgres_data:
@@ -100,4 +133,7 @@ volumes:
 networks:
   aida-network:
     name: aida-network
+    driver: bridge
+  pentest-network:
+    name: aida-pentest-network
     driver: bridge
