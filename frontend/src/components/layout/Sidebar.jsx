@@ -154,7 +154,7 @@ const Sidebar = ({ onToggle }) => {
               <p className="text-xs font-medium text-neutral-900 dark:text-neutral-100 truncate">
                 {user ? user.username : 'AIDA'}
               </p>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">v1.0.0-alpha</p>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">v1.1.0</p>
             </div>
             <button
               onClick={logout}

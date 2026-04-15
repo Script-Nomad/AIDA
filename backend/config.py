@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "AIDA"
     PROJECT_TAGLINE: str = "AI-Driven Security Assessment"
     PROJECT_DESCRIPTION: str = "Intelligent autonomous penetration testing powered by AI"
-    VERSION: str = "1.0.0-alpha"
+    VERSION: str = "1.1.0"
     API_V1_PREFIX: str = "/api"
 
     # Database Credentials

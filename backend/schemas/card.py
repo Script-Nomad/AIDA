@@ -2,7 +2,7 @@
 Card Pydantic schemas
 """
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, List
 from pydantic import BaseModel, ConfigDict
 
 
@@ -50,3 +50,27 @@ class CardResponse(CardBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class GlobalFindingResponse(CardResponse):
+    """Schema for a finding enriched with cross-assessment context"""
+    assessment_name: str
+    serial_number: str   # e.g. AIDA-3-001
+    finding_number: int
+
+
+class FindingsPaginatedResponse(BaseModel):
+    """Paginated list of global findings"""
+    findings: List[GlobalFindingResponse]
+    total: int
+    skip: int
+    limit: int
+    has_more: bool
+
+
+class FindingsStatsResponse(BaseModel):
+    """Aggregate statistics across all findings"""
+    total_findings: int
+    by_severity: Dict[str, int]
+    by_status: Dict[str, int]
+    unique_assessments: int

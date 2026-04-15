@@ -19,7 +19,7 @@
   <img src="https://img.shields.io/badge/License-AGPL_v3-blue" alt="License">
   <img src="https://img.shields.io/badge/MCP-Compatible-green" alt="MCP">
   <img src="https://img.shields.io/badge/Container-aida--pentest-orange" alt="aida-pentest">
-  <img src="https://img.shields.io/badge/Version-1.0.0--alpha-purple" alt="Version">
+  <img src="https://img.shields.io/badge/Version-1.1.0-purple" alt="Version">
 </p>
 
 ---
@@ -251,21 +251,21 @@ AIDA/
 
 ---
 
-## Alpha Release - Known Limitations
+## What's New in v1.1.0
 
-**AIDA is currently in alpha.** This means:
+- **Full authentication system** — JWT-based auth, admin/user roles, first-run setup wizard, API key for CLI/MCP
+- **PDF report generation** — Export assessments as professional reports with one click
+- **CVSS 4.0 scoring** — Automatic score calculation directly on findings cards
+- **Attack timeline** — Auto-generated event timeline per assessment
+- **Notifications** — Telegram, Slack, and Email alerts with optional PDF attachment
+- **Assessment templates** — Start from predefined methodologies
+- **`aida-pentest` container** — Built-in lightweight pentesting environment (~2 GB), no Exegol required
+- **LAN / production mode** — Nginx reverse proxy, Docker Hub images (`./start.sh --lan`)
+- **New MCP tools** — `python_exec` and `http_request` for advanced AI workflows
+- **Security hardening** — Docker socket proxy, path traversal prevention, `shlex.quote` sanitization, PostgreSQL bound to localhost only, auto-generated secret key
+- **Cross-assessment findings view** — Aggregate and filter all findings across every assessment
 
-- **Local / LAN use only** - Do NOT expose the web interface to the public internet without additional security hardening
-- **Bugs and rough edges exist** - Some error messages use browser alerts, WebSocket reconnections may require manual refresh
-- **Database credentials** - Change defaults in `.env` before any deployment
-
-**This is a working prototype for early adopters and security professionals who understand the risks.**
-
-Improvements coming in future releases:
-- Refined UI/UX (replacing alerts with modals)
-- Enhanced error handling
-
-**For now: Run locally or on your LAN, don't expose to internet, use at your own risk.**
+> **⚠️ Deployment note:** Run locally or on your LAN. Do NOT expose the web interface to the public internet without additional hardening (HTTPS, firewall, strong credentials in `.env`).
 
 Report bugs and request features: [GitHub Issues](https://github.com/Vasco0x4/AIDA/issues)
 

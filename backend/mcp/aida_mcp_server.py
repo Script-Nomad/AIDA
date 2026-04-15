@@ -112,7 +112,7 @@ async def main():
         "MCP server starting",
         server="aida-mcp",
         project="AIDA - AI-Driven Security Assessment",
-        version="1.0.0-alpha",
+        version="1.1.0",
         log_level=settings.LOG_LEVEL
     )
 
@@ -126,7 +126,7 @@ async def main():
                 write_stream,
                 InitializationOptions(
                     server_name="aida-mcp",
-                    server_version="1.0.0-alpha",
+                    server_version="1.1.0",
                     capabilities=server.get_capabilities(
                         notification_options=NotificationOptions(),
                         experimental_capabilities={}
