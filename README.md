@@ -45,11 +45,11 @@ and documents every finding with the commands used.
 
 Claude + AIDA isn't just talk. It produces results that end up in CVE databases.
 
-| CVE | Severity | Description |
-|-----|----------|-------------|
-| [CVE-2026-32034](https://nvd.nist.gov/vuln/detail/CVE-2026-32034) | ![MEDIUM](https://img.shields.io/badge/CVSS%204.0-5.6%20MEDIUM-yellow) | Insecure HTTP permits hijacking |
-
-Discovered in [openclaw/openclaw](https://github.com/openclaw/openclaw) — an open-source claw machine controller with 400+ stars.
+| ID | Severity | Project | Description |
+|----|----------|---------|-------------|
+| [CVE-2026-32034](https://nvd.nist.gov/vuln/detail/CVE-2026-32034) | ![MEDIUM](https://img.shields.io/badge/CVSS-5.6%20MEDIUM-yellow) | [openclaw/openclaw](https://github.com/openclaw/openclaw) | Insecure HTTP permits hijacking |
+| [GHSA-xfvv-ggvq-pchh](https://github.com/appsmithorg/appsmith/security/advisories/GHSA-xfvv-ggvq-pchh) | ![HIGH](https://img.shields.io/badge/CVSS-8.9%20HIGH-orange) | [appsmithorg/appsmith](https://github.com/appsmithorg/appsmith) | RCE via newline injection in env variable endpoint |
+| [GHSA-vvxf-f8q9-86gh](https://github.com/appsmithorg/appsmith/security/advisories/GHSA-vvxf-f8q9-86gh) | ![MEDIUM](https://img.shields.io/badge/CVSS-5.1%20MEDIUM-yellow) | [appsmithorg/appsmith](https://github.com/appsmithorg/appsmith) | SSRF via SMTP test endpoint — internal port scanning |
 
 *More under responsible disclosure — awaiting publication.*
 
