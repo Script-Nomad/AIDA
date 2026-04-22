@@ -736,8 +736,8 @@ The assessment workspace is ready. Use your standard tools to work with files an
 
         if base_url:
             env["ANTHROPIC_BASE_URL"] = base_url
-            # Disable prompt caching for external API proxies (Vertex AI, etc.)
-            env["DISABLE_PROMPT_CACHING"] = "1"
+            # For disable prompt caching for external API change 0 to 1
+            env["DISABLE_PROMPT_CACHING"] = "0"
         if api_key:
             env["ANTHROPIC_AUTH_TOKEN"] = api_key
 
