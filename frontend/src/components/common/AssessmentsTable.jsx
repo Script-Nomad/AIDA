@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MoreVertical, Calendar, User, Tag, Clock, Edit3 } from 'lucide-react';
+import { MoreVertical, Calendar, User, Tag, Clock, Edit3, Pin, PinOff } from 'lucide-react';
 import AssessmentCardActions from './AssessmentCardActions';
 import StatusDropdown from './StatusDropdown';
 import apiClient from '../../services/api';
+import { usePinnedAssessments } from '../../hooks/usePinnedAssessments';
 
 const AssessmentsTable = ({
   assessments = [],
@@ -15,6 +16,7 @@ const AssessmentsTable = ({
 }) => {
   const [sortField, setSortField] = useState('created_at');
   const [sortDirection, setSortDirection] = useState('desc');
+  const { isPinned, togglePin } = usePinnedAssessments();
 
   const getCategoryFromName = (name) => {
     // Extract category from assessment name patterns
@@ -96,15 +98,26 @@ const AssessmentsTable = ({
     }
   };
 
+  const handleTogglePin = (e, assessmentId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    togglePin(assessmentId);
+  };
+
   const sortedAssessments = [...assessments].sort((a, b) => {
+    // Pinned items always float to the top
+    const aPinned = isPinned(a.id);
+    const bPinned = isPinned(b.id);
+    if (aPinned !== bPinned) return aPinned ? -1 : 1;
+
     let aValue = a[sortField];
     let bValue = b[sortField];
-    
+
     if (sortField === 'created_at' || sortField === 'end_date') {
       aValue = new Date(aValue);
       bValue = new Date(bValue);
     }
-    
+
     if (sortDirection === 'asc') {
       return aValue > bValue ? 1 : -1;
     } else {
@@ -199,16 +212,21 @@ const AssessmentsTable = ({
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-neutral-800 divide-y divide-neutral-200 dark:divide-neutral-700">
-            {sortedAssessments.map((assessment) => (
-              <tr key={assessment.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors group">
+            {sortedAssessments.map((assessment) => {
+              const pinned = isPinned(assessment.id);
+              return (
+              <tr key={assessment.id} className={`hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors group${pinned ? ' bg-amber-50/30 dark:bg-amber-900/5' : ''}`}>
                 <td className="px-4 py-3 whitespace-nowrap">
-                  <Link
-                    to={`/assessments/${assessment.id}`}
-                    className="text-sm font-medium text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 transition-colors truncate block"
-                    title={assessment.name}
-                  >
-                    {assessment.name}
-                  </Link>
+                  <div className="flex items-center gap-1.5">
+                    {pinned && <Pin className="w-3 h-3 text-amber-500 shrink-0" />}
+                    <Link
+                      to={`/assessments/${assessment.id}`}
+                      className="text-sm font-medium text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 transition-colors truncate block"
+                      title={assessment.name}
+                    >
+                      {assessment.name}
+                    </Link>
+                  </div>
                 </td>
                 <td className="px-3 py-3 whitespace-nowrap">
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getCategoryColor(assessment.category || getCategoryFromName(assessment.name))}`}>
@@ -253,6 +271,17 @@ const AssessmentsTable = ({
                 <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-medium">
                   <div className="flex items-center justify-end gap-2">
                     <button
+                      onClick={(e) => handleTogglePin(e, assessment.id)}
+                      className={`p-1.5 rounded transition-all ${
+                        pinned
+                          ? 'text-amber-500 hover:bg-amber-100 dark:hover:bg-amber-900/30'
+                          : 'opacity-0 group-hover:opacity-100 hover:bg-neutral-100 dark:hover:bg-neutral-600 text-neutral-400 dark:text-neutral-500'
+                      }`}
+                      title={pinned ? 'Unpin' : 'Pin to top'}
+                    >
+                      {pinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+                    </button>
+                    <button
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -272,7 +301,8 @@ const AssessmentsTable = ({
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

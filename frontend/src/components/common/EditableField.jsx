@@ -75,7 +75,7 @@ const EditableField = ({ value, onSave, className = '', multiline = false, place
   return (
     <div
       onClick={() => setIsEditing(true)}
-      className={`editable ${className}`}
+      className={`editable ${className}${multiline ? ' whitespace-pre-wrap' : ''}`}
     >
       {value || <span className="text-neutral-400 dark:text-neutral-500">{placeholder}</span>}
     </div>

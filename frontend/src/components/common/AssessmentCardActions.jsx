@@ -1,8 +1,9 @@
 import { useState, useRef } from 'react';
-import { MoreVertical } from 'lucide-react';
+import { MoreVertical, Check } from 'lucide-react';
 import ContextMenu from './ContextMenu';
 import DuplicateAssessmentModal from '../assessment/DuplicateAssessmentModal';
 import folderService from '../../services/folderService';
+import apiClient from '../../services/api';
 
 const AssessmentCardActions = ({
   assessment,
@@ -13,7 +14,14 @@ const AssessmentCardActions = ({
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const buttonRef = useRef(null);
+
+  const showToast = (message) => {
+    setToast(message);
+    setTimeout(() => setToast(null), 2000);
+  };
 
   const handleMenuClick = (event) => {
     event.preventDefault();
@@ -52,12 +60,39 @@ const AssessmentCardActions = ({
     }
   };
 
-  const handleExport = () => {
-    // TODO: Implement export functionality
+  const handleExport = async () => {
+    if (exportingPdf) return;
+    setIsContextMenuOpen(false);
+    setExportingPdf(true);
+    try {
+      const response = await apiClient.get(`/assessments/${assessment.id}/report/pdf`, { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const safeName = assessment.name.replace(/[^a-zA-Z0-9]/g, '_');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `AIDA_Report_${safeName}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to export PDF:', error);
+      showToast('Failed to export report');
+    } finally {
+      setExportingPdf(false);
+    }
   };
 
-  const handleShare = () => {
-    // TODO: Implement share functionality
+  const handleShare = async () => {
+    setIsContextMenuOpen(false);
+    const link = `${window.location.origin}/assessments/${assessment.id}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      showToast('Link copied to clipboard');
+    } catch (error) {
+      console.error('Failed to copy link:', error);
+      showToast('Failed to copy link');
+    }
   };
 
   return (
@@ -90,6 +125,13 @@ const AssessmentCardActions = ({
         onClose={() => setIsDuplicateModalOpen(false)}
         onSuccess={onAssessmentUpdate}
       />
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-sm shadow-lg animate-in">
+          <Check className="w-4 h-4" />
+          <span>{toast}</span>
+        </div>
+      )}
     </>
   );
 };

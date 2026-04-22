@@ -646,63 +646,63 @@ const AssessmentDetail = () => {
           <h2 className="text-sm font-semibold text-gray-800 dark:text-neutral-100">Assessment Settings</h2>
         </div>
         <div className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="font-medium text-gray-700 dark:text-neutral-300">Client:</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">Client</span>
               <EditableField
                 value={assessment.client_name || ''}
                 onSave={(value) => updateAssessment('client_name', value)}
                 placeholder="Client name"
-                className="text-gray-900 dark:text-neutral-100 ml-2"
+                className="text-gray-900 dark:text-neutral-100"
               />
             </div>
-            <div>
-              <span className="font-medium text-gray-700 dark:text-neutral-300">Scope:</span>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">Scope</span>
               <EditableField
                 value={assessment.scope || ''}
                 onSave={(value) => updateAssessment('scope', value)}
                 placeholder="Assessment scope"
-                className="text-gray-900 dark:text-neutral-100 ml-2"
+                className="text-gray-900 dark:text-neutral-100"
               />
             </div>
-            <div>
-              <span className="font-medium text-gray-700 dark:text-neutral-300">Domains:</span>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">Domains</span>
               <EditableField
                 value={assessment.target_domains || ''}
                 onSave={(value) => updateAssessment('target_domains', value)}
                 placeholder="Target domains"
                 multiline
-                className="text-gray-900 dark:text-neutral-100 ml-2"
+                className="text-gray-900 dark:text-neutral-100"
               />
             </div>
-            <div>
-              <span className="font-medium text-gray-700 dark:text-neutral-300">IP Scopes:</span>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">IP Scopes</span>
               <EditableField
                 value={assessment.ip_scopes || ''}
                 onSave={(value) => updateAssessment('ip_scopes', value)}
                 placeholder="IP scopes"
                 multiline
-                className="text-gray-900 dark:text-neutral-100 ml-2"
+                className="text-gray-900 dark:text-neutral-100"
               />
             </div>
-            <div>
-              <span className="font-medium text-gray-700 dark:text-neutral-300">Limitations:</span>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">Limitations</span>
               <EditableField
                 value={assessment.limitations || ''}
                 onSave={(value) => updateAssessment('limitations', value)}
                 placeholder="Assessment limitations"
                 multiline
-                className="text-gray-900 dark:text-neutral-100 ml-2"
+                className="text-gray-900 dark:text-neutral-100"
               />
             </div>
-            <div>
-              <span className="font-medium text-gray-700 dark:text-neutral-300">Objectives:</span>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">Objectives</span>
               <EditableField
                 value={assessment.objectives || ''}
                 onSave={(value) => updateAssessment('objectives', value)}
                 placeholder="Assessment objectives"
                 multiline
-                className="text-gray-900 dark:text-neutral-100 ml-2"
+                className="text-gray-900 dark:text-neutral-100"
               />
             </div>
           </div>
