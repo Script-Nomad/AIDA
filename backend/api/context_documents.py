@@ -25,11 +25,12 @@ router = APIRouter(prefix="/assessments", tags=["context_documents"])
 
 # Allowed file extensions for regular context uploads
 ALLOWED_EXTENSIONS = {
-    '.pdf', '.txt', '.md', '.doc', '.docx',
+    '.pdf', '.txt', '.md', '.doc', '.docx', '.xlsx',
     '.json', '.yaml', '.yml', '.xml', '.ini', '.conf',
     '.png', '.jpg', '.jpeg', '.svg',
     '.zip', '.tar', '.gz',
-    '.csv', '.log', '.html', '.htm'
+    '.csv', '.log', '.html', '.htm',
+    '.pem', '.crt'
 }
 
 # Fallback constants (overridden by DB platform_settings at request time)
