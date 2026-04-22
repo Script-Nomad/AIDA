@@ -45,9 +45,9 @@ and documents every finding with the commands used.
 
 Claude + AIDA isn't just talk. It produces results that end up in CVE databases.
 
-| CVE | Severity                                              | Description |
-|-----|-------------------------------------------------------|-------------|
-| [CVE-2026-32034](https://nvd.nist.gov/vuln/detail/CVE-2026-32034) | ![MEDIUM](https://img.shields.io/badge/CVSS%204.0-5.6%20MEDIUM-yellow) | Insecure HTTP permits hijacking |
+| CVE | Severity | Project | Description |
+|-----|----------|---------|-------------|
+| [CVE-2026-32034](https://nvd.nist.gov/vuln/detail/CVE-2026-32034) | ![MEDIUM](https://img.shields.io/badge/CVSS%204.0-5.6%20MEDIUM-yellow) | [openclaw ★ 400](https://github.com/openclaw/openclaw) | Insecure HTTP permits hijacking |
 
 *More under responsible disclosure — awaiting publication.*
 
