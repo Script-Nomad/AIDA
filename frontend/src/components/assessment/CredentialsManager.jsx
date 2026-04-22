@@ -1,7 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import apiClient from '../../services/api';
 import { decodeJWT, formatExpirationTime } from '../../utils/jwtDecoder';
 import { Trash2, Copy, Eye, EyeOff, Plus, X, Edit2 } from '../icons';
+
+// Group order: good → neutral → warning → bad
+const STATUS_ORDER = { valid: 0, active: 1, expiring_soon: 2, expired: 3 };
+
+const getCredentialStatus = (cred) => {
+  const decoded = cred.credential_type === 'bearer_token' && cred.token
+    ? decodeJWT(cred.token)
+    : null;
+  if (decoded?.valid && decoded.isExpired) return { key: 'expired', decoded };
+  if (decoded?.valid && decoded.expiresIn < 1800) return { key: 'expiring_soon', decoded };
+  if (decoded?.valid) return { key: 'valid', decoded };
+  return { key: 'active', decoded: null };
+};
 
 const CredentialsManager = ({ assessmentId, onUpdate }) => {
   const [credentials, setCredentials] = useState([]);
@@ -26,6 +39,14 @@ const CredentialsManager = ({ assessmentId, onUpdate }) => {
       setLoading(false);
     }
   };
+
+  const sortedCredentials = useMemo(() => {
+    return [...credentials].sort((a, b) => {
+      const aOrder = STATUS_ORDER[getCredentialStatus(a).key];
+      const bOrder = STATUS_ORDER[getCredentialStatus(b).key];
+      return aOrder - bOrder;
+    });
+  }, [credentials]);
 
   const handleDelete = async (credentialId) => {
     if (!confirm('Are you sure you want to delete this credential?')) return;
@@ -117,28 +138,24 @@ const CredentialsManager = ({ assessmentId, onUpdate }) => {
               </tr>
             </thead>
             <tbody>
-              {credentials.map((cred) => {
-                const decoded = cred.credential_type === 'bearer_token' && cred.token
-                  ? decodeJWT(cred.token)
-                  : null;
-
-                const isExpired = decoded?.valid && decoded.isExpired;
-                const expiringSoon = decoded?.valid && !decoded.isExpired && decoded.expiresIn < 1800;
+              {sortedCredentials.map((cred) => {
+                const { key: statusKey, decoded } = getCredentialStatus(cred);
+                const isExpired = statusKey === 'expired';
 
                 let statusBadge = null;
-                if (isExpired) {
+                if (statusKey === 'expired') {
                   statusBadge = (
                     <span className="inline-flex items-center px-2 py-0.5 text-[10px] bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-full font-medium">
                       Expired
                     </span>
                   );
-                } else if (expiringSoon) {
+                } else if (statusKey === 'expiring_soon') {
                   statusBadge = (
                     <span className="inline-flex items-center px-2 py-0.5 text-[10px] bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-full font-medium">
                       Expiring Soon
                     </span>
                   );
-                } else if (decoded?.valid) {
+                } else if (statusKey === 'valid') {
                   statusBadge = (
                     <span className="inline-flex items-center px-2 py-0.5 text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full font-medium">
                       Valid
