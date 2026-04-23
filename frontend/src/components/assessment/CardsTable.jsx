@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Shield, Eye, EyeOff, Info, AlertTriangle, Edit2, Trash2, Plus } from '../icons';
+import { ChevronDown, ChevronRight, Shield, Eye, EyeOff, Info, AlertTriangle, Edit2, Trash2, Plus, Copy, Check } from '../icons';
 import { getSeverityBadgeClass, getSeverityBarClass, getSeverityTextClass } from '../../utils/severity';
 import UnifiedModal from '../common/UnifiedModal';
 import CvssCalculator from './CvssCalculator';
@@ -7,6 +7,7 @@ import apiClient from '../../services/api';
 
 const CardsTable = ({ cards, assessmentId, onUpdate, hideAddButton = false, externalTrigger = 0 }) => {
   const [expandedCards, setExpandedCards] = useState(new Set());
+  const [copiedCardId, setCopiedCardId] = useState(null);
 
   // Modal state for Add/Edit
   const [showModal, setShowModal] = useState(false);
@@ -27,6 +28,70 @@ const CardsTable = ({ cards, assessmentId, onUpdate, hideAddButton = false, exte
     cvss_mode: 'cvss',  // 'cvss' | 'manual'
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const copyAsMarkdown = (card) => {
+    const lines = [];
+    const type = (card.card_type || 'unknown').charAt(0).toUpperCase() + (card.card_type || 'unknown').slice(1);
+    lines.push(`# ${type} — ${card.title || 'Untitled'}`);
+    lines.push('');
+
+    const meta = [
+      `| Field | Value |`,
+      `|-------|-------|`,
+      `| **Type** | ${type} |`,
+    ];
+    if (card.card_type === 'finding') {
+      if (card.cvss_score != null) meta.push(`| **CVSS Score** | ${card.cvss_score.toFixed(1)} |`);
+      if (card.severity) meta.push(`| **Severity** | ${card.severity} |`);
+    }
+    if (card.target_service) meta.push(`| **Target** | ${card.target_service} |`);
+    if (card.section_number) meta.push(`| **Section** | ${card.section_number} |`);
+    if (card.status) meta.push(`| **Status** | ${card.status} |`);
+    lines.push(...meta);
+    lines.push('');
+
+    if (card.technical_analysis) {
+      lines.push('## Technical Analysis');
+      lines.push('');
+      lines.push(card.technical_analysis);
+      lines.push('');
+    }
+    if (card.proof) {
+      lines.push('## Proof');
+      lines.push('');
+      lines.push('```');
+      lines.push(card.proof);
+      lines.push('```');
+      lines.push('');
+    }
+    if (card.notes) {
+      lines.push('## Notes');
+      lines.push('');
+      lines.push(card.notes);
+      lines.push('');
+    }
+    if (card.context) {
+      lines.push('## Context');
+      lines.push('');
+      lines.push(card.context);
+      lines.push('');
+    }
+    if (card.cvss_vector) {
+      lines.push('## CVSS 4.0');
+      lines.push('');
+      if (card.cvss_score != null) lines.push(`- **Score:** ${card.cvss_score.toFixed(1)}`);
+      lines.push(`- **Vector:** \`${card.cvss_vector}\``);
+      lines.push('');
+    }
+
+    lines.push('---');
+    lines.push(`*Exported from AIDA on ${new Date().toISOString().split('T')[0]}*`);
+
+    navigator.clipboard.writeText(lines.join('\n')).then(() => {
+      setCopiedCardId(card.id);
+      setTimeout(() => setCopiedCardId(null), 2000);
+    });
+  };
 
   const toggleCard = (cardId) => {
     const newExpanded = new Set(expandedCards);
@@ -290,6 +355,16 @@ const CardsTable = ({ cards, assessmentId, onUpdate, hideAddButton = false, exte
 
                   {/* Action Buttons */}
                   <div className="flex-shrink-0 ml-4 flex items-center gap-1">
+                    <button
+                      onClick={() => copyAsMarkdown(card)}
+                      className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
+                      title="Copy as Markdown"
+                    >
+                      {copiedCardId === card.id
+                        ? <Check className="w-3.5 h-3.5 text-green-500" />
+                        : <Copy className="w-3.5 h-3.5" />
+                      }
+                    </button>
                     <button
                       onClick={() => openEditModal(card)}
                       className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded text-neutral-400 dark:text-neutral-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
