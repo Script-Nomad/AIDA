@@ -36,7 +36,7 @@ and documents every finding with the commands used.
 ---
 
 <p align="center">
-  <img src="./assets/view.png" alt="AIDA Dashboard" width="800">
+  <img src="./assets/view4.png" alt="AIDA Dashboard" width="800">
 </p>
 
 ---
@@ -78,9 +78,9 @@ observations, flags interesting behaviors, and documents every confirmed
 vulnerability — commands used, raw output, full context. Stop an engagement
 and resume it days later for retest, deeper analysis, or handoff.
 
-### Where does the real pentester fit in?
+### Where is the real pentester?
 
-You review. The AI hands you findings with full context — notes, commands,
+You review. The AI hands you findings with full context notes, commands,
 reproduction steps, and the reasoning that led there. You reproduce, triage,
 prioritize, and report.
 
