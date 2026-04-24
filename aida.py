@@ -235,6 +235,24 @@ def generate_mcp_config(db_url: str, token: str = "", quiet=False) -> None:
         console.print(f"[dim]  Python: {python_bin_str}[/dim]")
 
 
+def generate_mcp_http_config(url: str, api_key: str, quiet=False) -> None:
+    """Generate an HTTP Streamable-HTTP MCP config for remote servers."""
+    AIDA_CONFIG_DIR.mkdir(exist_ok=True)
+    config = {
+        "mcpServers": {
+            "aida-mcp": {
+                "url": url,
+                "headers": {"Authorization": f"Bearer {api_key}"},
+            }
+        }
+    }
+    MCP_CONFIG_FILE.write_text(json.dumps(config, indent=2))
+    MCP_CONFIG_FILE.chmod(0o600)
+    if not quiet:
+        console.print(f"[dim]✓ MCP config (HTTP): {MCP_CONFIG_FILE.name}[/dim]")
+        console.print(f"[dim]  Endpoint: {url}[/dim]")
+
+
 def generate_kimi_agent_file(preprompt_content: str, assessment_name: Optional[str], 
                              assessment_id: Optional[str], container_name: Optional[str],
                              quiet=False) -> Path:
@@ -504,13 +522,17 @@ def show_cli_not_found():
 @click.option("--base-url", help="Custom API base URL (Claude Code only)")
 @click.option("--api-key", help="API authentication token (Claude Code only)")
 @click.option("--no-mcp", is_flag=True, help="Disable MCP server")
+@click.option("--http", "http_url", default=None,
+              help="Use the HTTP MCP transport at the given URL (e.g. http://localhost:8000/mcp) instead of stdio")
+@click.option("--mcp-api-key", default=None,
+              help="Bearer API key for the HTTP MCP transport (env: AIDA_MCP_API_KEY)")
 @click.option("--debug", is_flag=True, help="Enable debug mode")
 @click.option("-q", "--quiet", is_flag=True, help="Quiet mode (minimal output)")
 @click.option("--cli", "cli_choice", type=click.Choice(["claude", "kimi", "qwen", "auto"]), default="auto",
               help="Which CLI to use (default: auto-detect)")
 @click.option("-y", "--yes", is_flag=True, help="Auto-approve all actions (Kimi/Qwen: --yolo, Claude: permission-mode=accept)")
 @click.argument("prompt", nargs=-1)
-def main(assessment, model, permission_mode, preprompt, base_url, api_key, no_mcp, debug, quiet, cli_choice, yes, prompt):
+def main(assessment, model, permission_mode, preprompt, base_url, api_key, no_mcp, http_url, mcp_api_key, debug, quiet, cli_choice, yes, prompt):
     """AIDA CLI Launcher - AI-Driven Security Assessment
 
     Supports Claude Code, Kimi CLI, and Qwen Code CLI as underlying AI agents.
@@ -666,10 +688,22 @@ def main(assessment, model, permission_mode, preprompt, base_url, api_key, no_mc
     
     # MCP Configuration
     if not no_mcp:
-        if not MCP_SERVER_PATH.exists():
-            console.print(f"[red]✗ MCP server not found: {MCP_SERVER_PATH}[/red]\n")
-            sys.exit(1)
-        generate_mcp_config(db_url, token, quiet)
+        if http_url or os.getenv("AIDA_MCP_HTTP_URL"):
+            # HTTP transport — don't spawn a subprocess, point the client at the URL.
+            url = http_url or os.getenv("AIDA_MCP_HTTP_URL")
+            key = mcp_api_key or os.getenv("AIDA_MCP_API_KEY", "")
+            if not key:
+                console.print(
+                    "[red]✗ HTTP MCP requires a Bearer key. "
+                    "Pass --mcp-api-key or set AIDA_MCP_API_KEY.[/red]\n"
+                )
+                sys.exit(1)
+            generate_mcp_http_config(url, key, quiet)
+        else:
+            if not MCP_SERVER_PATH.exists():
+                console.print(f"[red]✗ MCP server not found: {MCP_SERVER_PATH}[/red]\n")
+                sys.exit(1)
+            generate_mcp_config(db_url, token, quiet)
     
     # Workspace resolution
     workspace_path = str(AIDA_ROOT)

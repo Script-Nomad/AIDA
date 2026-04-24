@@ -45,8 +45,11 @@ services:
       # The proxy only allows inspect/exec/start — no run/create/volumes.
       DOCKER_HOST: tcp://docker-proxy:2375
     ports:
-      # Bind to localhost only — the API must not be reachable from the LAN.
-      - "127.0.0.1:8000:8000"
+      # Bind host is configurable via BACKEND_BIND_HOST. Default 127.0.0.1
+      # keeps the API off the LAN. Set to 0.0.0.0 to expose the HTTP MCP
+      # transport to LAN clients (still gated by API-key auth + network
+      # policy in platform_settings).
+      - "${BACKEND_BIND_HOST:-127.0.0.1}:8000:8000"
     volumes:
       # Mount source code for hot reload (exclude venv to avoid conflicts)
       # :z flag enables SELinux compatibility (RHEL/Fedora)

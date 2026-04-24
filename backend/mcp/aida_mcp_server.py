@@ -20,9 +20,8 @@ from pathlib import Path
 
 try:
     from mcp.server.models import InitializationOptions
-    from mcp.server import NotificationOptions, Server
+    from mcp.server import NotificationOptions
     from mcp.server.stdio import stdio_server
-    from mcp.types import Tool, TextContent, Resource
 
     # Add parent directory to path for utils import
     sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -54,13 +53,14 @@ try:
 
     logger = get_logger(__name__)
 
-    # Add modules directory to path
+    # Add this dir + modules dir to path so we can import the shared
+    # builder and the handler modules without colliding with the
+    # installed ``mcp`` package.
     sys.path.insert(0, str(Path(__file__).parent / "modules"))
+    sys.path.insert(0, str(Path(__file__).parent))
 
     from mcp_classes import AidaMCPService
-    from mcp_tools import get_tool_definitions
-    from mcp_handlers import handle_tool_call
-    from mcp_resources import get_resources, handle_resource_read
+    from server_builder import build_mcp_server
 
 except Exception as e:
     # Log to stderr for debugging (won't pollute stdout MCP protocol)
@@ -69,33 +69,9 @@ except Exception as e:
     traceback.print_exc(file=sys.stderr)
     sys.exit(1)
 
-# Initialize MCP server and service
-server = Server("aida-mcp")
+# Initialize MCP service and build the transport-agnostic server
 mcp_service = AidaMCPService()
-
-
-@server.list_resources()
-async def handle_list_resources() -> list[Resource]:
-    """List available resources"""
-    return get_resources()
-
-
-@server.read_resource()
-async def handle_read_resource(uri: str) -> str:
-    """Read resource content"""
-    return await handle_resource_read(uri, mcp_service)
-
-
-@server.list_tools()
-async def handle_list_tools() -> list[Tool]:
-    """List all available MCP tools for Claude"""
-    return get_tool_definitions()
-
-
-@server.call_tool()
-async def handle_call_tool_wrapper(name: str, arguments: dict) -> list[TextContent]:
-    """Handle tool calls from Claude"""
-    return await handle_tool_call(name, arguments, mcp_service)
+server = build_mcp_server(mcp_service)
 
 
 async def main():
