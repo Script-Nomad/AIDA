@@ -41,6 +41,8 @@ services:
       POSTGRES_DB: ${DB_NAME:-aida_assessments}
       # Set to 'development' by start.sh --dev for hot reload
       ENVIRONMENT: ${ENVIRONMENT:-production}
+      # Injected by start.sh --lan (dev mode) — includes LAN IP + localhost on port 5173
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
       # Route docker CLI through the socket proxy instead of raw daemon socket.
       # The proxy only allows inspect/exec/start — no run/create/volumes.
       DOCKER_HOST: tcp://docker-proxy:2375
@@ -84,8 +86,9 @@ services:
       # Frontend talks to backend via localhost (browser runs on host)
       VITE_API_URL: http://localhost:8000/api
     ports:
-      # Bind to localhost only — the dev server must not be reachable from the LAN.
-      - "127.0.0.1:5173:5173"
+      # Bind host is configurable via FRONTEND_BIND_HOST. Default 127.0.0.1
+      # keeps Vite off the LAN. Set to 0.0.0.0 with --dev --lan.
+      - "${FRONTEND_BIND_HOST:-127.0.0.1}:5173:5173"
     volumes:
       # Mount source code for hot reload (exclude node_modules to avoid conflicts)
       # :z flag enables SELinux compatibility (RHEL/Fedora)
