@@ -45,6 +45,7 @@ for arg in "$@"; do
             echo "  (default)      Production — Nginx on localhost:31337"
             echo "  --lan, -l      Production + LAN accessible (0.0.0.0:31337)"
             echo "  --dev, -d      Development — Vite hot reload on localhost:5173"
+            echo "  --dev --lan    Development + LAN (hot reload accessible from network)"
             echo ""
             echo "Options:"
             echo "  --fast, -f     Skip dependency checks (faster startup)"
@@ -64,7 +65,11 @@ if [[ "$MODE" == "dev" ]]; then
     COMPOSE_FILES=""
     FRONTEND_PORT=5173
     FRONTEND_URL="http://localhost:5173"
-    MODE_LABEL="Development"
+    if [[ "$BIND" == "0.0.0.0" ]]; then
+        MODE_LABEL="Development+LAN"
+    else
+        MODE_LABEL="Development"
+    fi
 else
     COMPOSE_FILES="-f docker-compose.yml -f docker-compose.prod.yml"
     FRONTEND_PORT=$AIDA_PORT
@@ -218,9 +223,10 @@ if [[ ! -f backend/.env ]]; then
     fi
 fi
 
-if [[ "$MODE" == "dev" ]] && [[ ! -f frontend/.env ]]; then
+if [[ "$MODE" == "dev" ]] && [[ "$BIND" != "0.0.0.0" ]]; then
+    # Always (re)write so a previous --lan run doesn't leave a stale LAN IP
     echo "VITE_API_URL=http://localhost:8000/api" > frontend/.env
-    log "Created frontend/.env"
+    log "Created/updated frontend/.env"
 fi
 
 # ==============================================================================
@@ -283,8 +289,20 @@ if [[ "$BIND" == "0.0.0.0" ]]; then
     fi
 
     log "LAN IP: $HOST_IP"
-    export BACKEND_CORS_ORIGINS="http://${HOST_IP}:${AIDA_PORT},http://localhost:${AIDA_PORT},http://127.0.0.1:${AIDA_PORT}"
-    FRONTEND_URL="http://${HOST_IP}:${AIDA_PORT}"
+
+    if [[ "$MODE" == "dev" ]]; then
+        # Dev + LAN: expose backend and Vite on the network
+        export BACKEND_BIND_HOST="0.0.0.0"
+        export FRONTEND_BIND_HOST="0.0.0.0"
+        # Write .env so Vite picks up the correct API URL (env file, not process env)
+        echo "VITE_API_URL=http://${HOST_IP}:8000/api" > frontend/.env
+        log "Updated frontend/.env for LAN (API → http://${HOST_IP}:8000/api)"
+        export BACKEND_CORS_ORIGINS="http://${HOST_IP}:5173,http://localhost:5173,http://127.0.0.1:5173"
+        FRONTEND_URL="http://${HOST_IP}:${FRONTEND_PORT}"
+    else
+        export BACKEND_CORS_ORIGINS="http://${HOST_IP}:${AIDA_PORT},http://localhost:${AIDA_PORT},http://127.0.0.1:${AIDA_PORT}"
+        FRONTEND_URL="http://${HOST_IP}:${AIDA_PORT}"
+    fi
 fi
 
 # ==============================================================================
@@ -428,7 +446,7 @@ log "API Docs : http://localhost:8000/docs"
 
 if [[ "$BIND" == "0.0.0.0" && -n "$HOST_IP" ]]; then
     echo ""
-    echo -e "  ${BLUE}Share with your team →${NC}  http://${HOST_IP}:${AIDA_PORT}"
+    echo -e "  ${BLUE}Share with your team →${NC}  $FRONTEND_URL"
 fi
 
 echo ""

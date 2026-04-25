@@ -17,11 +17,13 @@ import {
   Sun,
   FolderOpen,
   Bell,
+  Key,
 } from '../components/icons';
 import apiClient from '../services/api';
 import workspaceService from '../services/workspaceService';
 import notificationService from '../services/notificationService';
 import { useTheme } from '../contexts/ThemeContext';
+import McpAccessSection from '../components/common/McpAccessSection';
 
 const Settings = () => {
   const { theme, toggleTheme, isDark, primaryColor, setPrimaryColor, colorThemes } = useTheme();
@@ -667,6 +669,7 @@ const Settings = () => {
     { id: 'general', label: 'General', icon: SettingsIcon },
     { id: 'tools', label: 'Tools', icon: Terminal },
     { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'mcp', label: 'MCP Access', icon: Key },
     { id: 'about', label: 'About', icon: Info }
   ];
 
@@ -1548,6 +1551,9 @@ const Settings = () => {
             </div>
           </div>
         )}
+
+        {/* TAB: MCP ACCESS */}
+        {activeTab === 'mcp' && <McpAccessSection />}
 
         {/* TAB 4: ABOUT */}
         {activeTab === 'about' && (

@@ -8,15 +8,16 @@ ensure_secret_key()
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from auth import get_current_user, require_admin
+from auth import get_current_user, require_admin, verify_mcp_api_key
 from config import settings
 from database import init_db
-from api import assessments, cards, recon, sections, containers, folders, global_commands, search, system, credentials, websocket, workspace, pending_commands, context_documents, source_code, auth, reports, timeline, notifications, templates, users
+from api import assessments, cards, recon, sections, containers, folders, global_commands, search, system, credentials, websocket, workspace, pending_commands, context_documents, source_code, auth, reports, timeline, notifications, templates, users, api_keys
 from api import commands
 from api.commands import global_router as commands_global_router
+from mcp_http_app import handle_mcp_request, mcp_lifespan
 from utils.logger import setup_logging, get_logger
 from middleware.logging_middleware import LoggingMiddleware
 from middleware.rate_limit import limiter, rate_limit_exceeded_handler
@@ -38,7 +39,7 @@ logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifecycle: run migrations on startup, nothing on shutdown."""
+    """Application lifecycle: run migrations, start MCP session manager, yield."""
     init_db()
     logger.info(
         "Application started",
@@ -50,7 +51,12 @@ async def lifespan(app: FastAPI):
         log_format=settings.LOG_FORMAT,
         cors_origins=settings.BACKEND_CORS_ORIGINS,
     )
-    yield
+    # The MCP HTTP transport needs its session-manager task group alive for
+    # the lifetime of the app. The ``verify_mcp_api_key`` dependency gates
+    # the actual endpoint behind a feature flag, so spinning this up
+    # unconditionally is cheap and keeps the wiring simple.
+    async with mcp_lifespan():
+        yield
 
 
 # Create FastAPI app
@@ -110,6 +116,7 @@ app.include_router(reports.router, prefix=settings.API_V1_PREFIX, dependencies=p
 app.include_router(timeline.router, prefix=settings.API_V1_PREFIX, dependencies=protected)
 app.include_router(notifications.router, prefix=settings.API_V1_PREFIX, dependencies=protected)
 app.include_router(templates.router, prefix=settings.API_V1_PREFIX, dependencies=protected)
+app.include_router(api_keys.router, prefix=settings.API_V1_PREFIX, dependencies=protected)
 
 # Admin-only router
 app.include_router(
@@ -117,6 +124,24 @@ app.include_router(
     prefix=settings.API_V1_PREFIX,
     dependencies=[Depends(require_admin)],
 )
+
+
+# --- MCP HTTP (Streamable HTTP) ------------------------------------------
+# Gated by ``verify_mcp_api_key`` which enforces:
+#   - feature flag (platform_settings.mcp_http_enabled)
+#   - network policy (localhost / lan / any)
+#   - bearer API key validation
+# Streamable-HTTP uses POST for client→server messages, GET for the SSE
+# stream clients open to receive server-initiated events, and DELETE to
+# terminate the session.
+@app.api_route(
+    "/mcp",
+    methods=["GET", "POST", "DELETE"],
+    dependencies=[Depends(verify_mcp_api_key)],
+    include_in_schema=False,
+)
+async def mcp_endpoint(request: Request):
+    return await handle_mcp_request(request)
 
 
 @app.get("/")

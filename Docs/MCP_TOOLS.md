@@ -16,6 +16,60 @@ AIDA exposes tools through the Model Context Protocol (MCP). These tools give AI
 
 ---
 
+## Transport: stdio vs HTTP
+
+AIDA ships two transports. stdio is the default and spawns the MCP server as a local subprocess. HTTP (Streamable HTTP, spec 2025-11-25) is optional and lets remote clients connect with a Bearer API key.
+
+### stdio (default)
+
+```bash
+python3 aida.py --assessment "my-target"
+```
+
+Generates `.aida/mcp-config.json` pointing at the backend venv's Python. No network exposure — the AI client and MCP server share stdin/stdout.
+
+### HTTP (optional, remote-capable)
+
+1. Open AIDA → Settings → **MCP Access**.
+2. Toggle **Enable HTTP MCP transport**.
+3. Pick a network policy (localhost / LAN / any). LAN and Any require `BACKEND_BIND_HOST=0.0.0.0` in `.env` and a backend restart.
+4. Click **Create API key**, copy the value shown once.
+5. Paste the generated snippet into your MCP client's config. For Claude Code:
+
+```bash
+claude mcp add --transport http aida http://localhost:8000/mcp \
+  --header "Authorization: Bearer aida_sk_..."
+```
+
+Or in a client's `mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "aida": {
+      "url": "http://localhost:8000/mcp",
+      "headers": { "Authorization": "Bearer aida_sk_..." }
+    }
+  }
+}
+```
+
+The CLI launcher can emit the HTTP config for you:
+
+```bash
+python3 aida.py --http http://localhost:8000/mcp --mcp-api-key aida_sk_...
+```
+
+### Security
+
+- **Default off.** The `/mcp` route returns 503 until an admin enables it.
+- **Keys are bcrypt-hashed** at rest; the plaintext is shown exactly once on creation.
+- **Revocation is instant** via the Settings UI.
+- **Network policy** is enforced at the application layer even when the socket binds to 0.0.0.0.
+- **No TLS in-process** — put nginx/Caddy in front for WAN exposure.
+
+---
+
 ## 📋 MCP Tools Cheatsheet
 
 | Category | Tool | Signature | Description |

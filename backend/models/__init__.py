@@ -14,6 +14,7 @@ from .pending_command import PendingCommand
 from .user import User
 from .timeline_event import TimelineEvent
 from .notification_config import NotificationConfig
+from .api_key import ApiKey
 
 __all__ = [
     "Assessment",
@@ -29,5 +30,6 @@ __all__ = [
     "User",
     "TimelineEvent",
     "NotificationConfig",
+    "ApiKey",
 ]
 
