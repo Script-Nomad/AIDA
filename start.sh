@@ -361,9 +361,19 @@ fi
 # CHECK IF ALREADY RUNNING (same mode)
 # ==============================================================================
 
-CONTAINERS_RUNNING=$($COMPOSE ps --status running -q 2>/dev/null | wc -l | tr -d ' ')
+# Check the AIDA core containers by name (not just count — the user might
+# have unrelated containers up on the same host).
+running_names=$(docker ps --format "{{.Names}}" 2>/dev/null)
+core_up=true
+for name in aida_postgres aida_backend aida_frontend; do
+    echo "$running_names" | grep -q "^${name}$" || { core_up=false; break; }
+done
+# In TLS mode, Caddy must also be up
+if [[ -n "$TLS_MODE" ]] && ! echo "$running_names" | grep -q "^aida_caddy$"; then
+    core_up=false
+fi
 
-if [[ "$CONTAINERS_RUNNING" -ge 3 ]]; then
+if [[ "$core_up" == "true" ]]; then
     # If TLS mode and the Caddyfile changed (e.g. --lan → --domain), reload Caddy.
     if [[ -n "$TLS_MODE" && "$CADDYFILE_HASH_BEFORE" != "$CADDYFILE_HASH_AFTER" ]]; then
         log "Caddyfile changed — reloading Caddy..."
@@ -372,7 +382,8 @@ if [[ "$CONTAINERS_RUNNING" -ge 3 ]]; then
 
     log "AIDA is already running! (${MODE_LABEL})"
     echo ""
-    $COMPOSE ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+    $COMPOSE ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null \
+        | grep -E "NAME|aida_(postgres|backend|frontend|caddy|docker_proxy)|aida-pentest" || true
     echo ""
     log "Frontend: $FRONTEND_URL"
     log "Backend:  http://localhost:8000"
@@ -534,9 +545,15 @@ fi
 # START CONTAINERS
 # ==============================================================================
 
-RUNNING_CONTAINERS=$($COMPOSE ps --status running -q 2>/dev/null | wc -l | tr -d ' ')
+# Check core containers again (after teardown). 'docker compose up -d' is
+# idempotent, so this is mostly to skip a redundant log line.
+running_names=$(docker ps --format "{{.Names}}" 2>/dev/null)
+core_up=true
+for name in aida_postgres aida_backend aida_frontend; do
+    echo "$running_names" | grep -q "^${name}$" || { core_up=false; break; }
+done
 
-if [[ "$RUNNING_CONTAINERS" -ge 3 ]]; then
+if [[ "$core_up" == "true" ]]; then
     log "Containers already running"
 else
     log "Starting containers..."
