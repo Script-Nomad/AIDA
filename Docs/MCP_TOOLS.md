@@ -36,18 +36,35 @@ Generates `.aida/mcp-config.json` pointing at the backend venv's Python. No netw
 4. Click **Create API key**, copy the value shown once.
 5. Paste the generated snippet into your MCP client's config. For Claude Code:
 
+The endpoint is reachable at three URLs depending on how AIDA was started:
+
+| Mode | URL |
+|------|-----|
+| Local (default) | `http://localhost:31337/mcp` (via Nginx) or `http://localhost:8000/mcp` (direct backend) |
+| `--lan` | `https://<LAN_IP>/mcp` (via Caddy) |
+| `--domain example.com` | `https://example.com/mcp` (via Caddy + Let's Encrypt) |
+
 ```bash
+# Local
 claude mcp add --transport http aida http://localhost:8000/mcp \
+  --header "Authorization: Bearer aida_sk_..."
+
+# LAN — use the LAN IP shown by ./start.sh --lan
+claude mcp add --transport http aida https://192.168.1.42/mcp \
+  --header "Authorization: Bearer aida_sk_..."
+
+# Public domain
+claude mcp add --transport http aida https://aida.example.com/mcp \
   --header "Authorization: Bearer aida_sk_..."
 ```
 
-Or in a client's `mcp.json`:
+In a client's `mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "aida": {
-      "url": "http://localhost:8000/mcp",
+      "url": "https://aida.example.com/mcp",
       "headers": { "Authorization": "Bearer aida_sk_..." }
     }
   }
