@@ -102,7 +102,8 @@ cd AIDA
 Dashboard: `http://localhost:31337`
 
 > `./start.sh --dev` — hot reload for contributors
-> `./start.sh --lan` — share across your local network
+> `./start.sh --lan` — share across your local network (HTTPS, self-signed)
+> `./start.sh --domain x.com` — public deploy with Let's Encrypt
 
 ### Launch the Agent
 

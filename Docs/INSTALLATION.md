@@ -28,15 +28,19 @@ cd AIDA
 ./start.sh
 ```
 
-Open **http://localhost:31337** — production mode (Nginx) by default.
+Open **http://localhost:31337** — local mode (Nginx, plain HTTP) by default.
 
 Pre-built images are pulled from Docker Hub — no local build needed.
 
 This starts:
-- **PostgreSQL** on port `5432` - The database
-- **Backend API** on port `8000` - FastAPI server
+- **PostgreSQL** on port `5432` - The database (localhost only)
+- **Backend API** on port `8000` - FastAPI server (localhost only)
 - **Frontend (Nginx)** on port `31337` - Web dashboard
 - **aida-pentest** - Built-in pentesting container (~2 GB)
+
+> **Sharing on a network or deploying with a domain?** See [`TLS.md`](TLS.md)
+> for `./start.sh --lan` (HTTPS over your LAN) and `./start.sh --domain`
+> (HTTPS with Let's Encrypt).
 
 ### Step 3: First-Run Setup
 
@@ -306,28 +310,35 @@ One script, three modes:
 
 | Command | Description |
 |---------|-------------|
-| `./start.sh` | Production mode — Nginx on `localhost:31337` (default) |
-| `./start.sh --lan` | Production + LAN — accessible from your network |
-| `./start.sh --dev` | Development — Vite hot reload on `localhost:5173` |
+| `./start.sh` | Local — `http://localhost:31337`, no TLS (default) |
+| `./start.sh --lan` | LAN — `https://<LAN_IP>`, Caddy + self-signed cert |
+| `./start.sh --domain X.Y` | Public — `https://X.Y`, Caddy + Let's Encrypt |
+| `./start.sh --dev` | Dev — `http://localhost:5173`, Vite hot reload |
 | `./stop.sh` | Stop all services — data is preserved |
 | `./restart.sh` | Restart all services and wait for health checks |
 
-Switching between modes is safe — your database and all data are preserved.
+Switching between modes is safe — `start.sh` tears down the old stack first
+and your Postgres data volume is never touched.
 
 ```bash
-# Production (default)
+# Local-only (default)
 ./start.sh
 
-# Share on LAN (auto-detects IP, configures CORS)
+# Share on your network (HTTPS with self-signed cert)
 ./start.sh --lan
 
-# Development (contributors — Vite hot reload)
+# Deploy with a real domain (Let's Encrypt)
+./start.sh --domain aida.example.com --email admin@example.com
+
+# Development (Vite hot reload)
 ./start.sh --dev
 
 # Stop / restart
 ./stop.sh
 ./restart.sh
 ```
+
+> Full TLS reference → [`TLS.md`](TLS.md)
 
 ---
 
@@ -341,6 +352,7 @@ TODO
 
 - [**User Guide**](USER_GUIDE.md) - Learn how to use the platform
 - [**MCP Tools Reference**](MCP_TOOLS.md) - All available tools for your AI
+- [**TLS Setup**](TLS.md) - LAN sharing and Let's Encrypt for public domains
 - [**Architecture**](ARCHITECTURE.md) - Technical deep dive
 
 ---

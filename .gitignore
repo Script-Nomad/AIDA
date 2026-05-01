@@ -70,3 +70,6 @@ switch-db.sh
 
 # Claude Code internal files
 .claude/
+
+# TLS — Caddyfile generated dynamically by start.sh in --lan / --domain mode
+/.aida/Caddyfile

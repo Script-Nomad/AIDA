@@ -66,7 +66,10 @@ python3 aida.py --http http://localhost:8000/mcp --mcp-api-key aida_sk_...
 - **Keys are bcrypt-hashed** at rest; the plaintext is shown exactly once on creation.
 - **Revocation is instant** via the Settings UI.
 - **Network policy** is enforced at the application layer even when the socket binds to 0.0.0.0.
-- **No TLS in-process** — put nginx/Caddy in front for WAN exposure.
+- **TLS is optional and mode-driven.** In `./start.sh --lan` and `./start.sh --domain` modes,
+  Caddy fronts the backend and the MCP endpoint is also reachable at
+  `https://<host>/mcp`. In default local mode there is no TLS — `http://localhost:8000/mcp`
+  is fine because the traffic stays on your machine. See [`TLS.md`](TLS.md).
 
 ---
 
