@@ -12,15 +12,6 @@ wizard, no config file, no setup step — the flag dictates everything.
 
 ---
 
-## Why no TLS in local mode
-
-Traffic in local mode never leaves your machine. An attacker would need root
-on your box to intercept it — and at that point they don't need to break TLS.
-Adding self-signed certs to localhost just gives you a browser warning to
-click through every session, with zero added security. So we don't.
-
----
-
 ## LAN mode (`--lan`)
 
 ```bash
