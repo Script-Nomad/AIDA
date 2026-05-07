@@ -30,7 +30,7 @@ cd AIDA
 
 Open **http://localhost:31337** — local mode (Nginx, plain HTTP) by default.
 
-Pre-built images are pulled from Docker Hub — no local build needed.
+The backend image is pulled from Docker Hub. The frontend (Nginx) is always built locally so that `VITE_API_URL=/api` is correctly baked in at compile time.
 
 This starts:
 - **PostgreSQL** on port `5432` - The database (localhost only)
@@ -344,7 +344,75 @@ and your Postgres data volume is never touched.
 
 ## Troubleshooting
 
-TODO
+### "Backend not reachable" in the web UI (default `./start.sh`)
+
+This means the frontend loaded but can't reach the API. In default mode, Nginx proxies `/api` requests to the backend container over Docker's internal network. If that path is broken, the UI shows this banner even though the backend is running.
+
+**Step 1 — Check the backend is actually healthy:**
+```bash
+curl http://localhost:8000/health
+# Expected: {"status":"healthy"}
+```
+
+**Step 2 — Check Nginx can reach the backend:**
+```bash
+docker logs aida_frontend --tail 20
+# Look for "connect() failed" or "no live upstreams" — confirms a network issue
+```
+
+**Step 3 — Ubuntu: check Docker bridge networking (most common cause)**
+
+On Ubuntu, `ufw` with `DEFAULT_FORWARD_POLICY=DROP` blocks Docker's inter-container traffic. This only affects prod mode (which uses Nginx as a proxy between containers) — dev mode works because the browser hits `localhost:8000` directly.
+
+Check the current policy:
+```bash
+sudo grep DEFAULT_FORWARD_POLICY /etc/default/ufw
+```
+
+If it says `DROP`, fix it:
+```bash
+sudo sed -i 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
+sudo ufw reload
+```
+
+Then restart the stack:
+```bash
+./stop.sh && ./start.sh
+```
+
+> **Why does `--dev` work but default mode doesn't?**  
+> In dev mode, `VITE_API_URL=http://localhost:8000/api` — the browser calls the backend directly via the published host port. No Docker networking is needed. In default mode, Nginx (in the frontend container) must route to the backend container over `aida-network`. If the Docker bridge forward policy is `DROP`, that intra-container traffic is blocked.
+
+**Step 4 — Verify containers are on the same network:**
+```bash
+docker network inspect aida-network --format '{{range .Containers}}{{.Name}} {{end}}'
+# Should list: aida_backend aida_frontend aida_postgres aida_docker_proxy
+```
+
+---
+
+### Frontend timeout during `./start.sh` ("TIMEOUT" then exits with error)
+
+The Nginx build can take 2–5 minutes on first run (npm install + Vite build). If you see a timeout, re-run `./start.sh` — it will detect the already-running containers and skip the startup.
+
+---
+
+### Port 31337 already in use
+
+```bash
+# Find what's using it
+sudo ss -tlnp | grep 31337
+# Or
+sudo lsof -i :31337
+
+# Kill the process or change AIDA_PORT in start.sh
+```
+
+---
+
+### Docker pull fails (no internet / private mirror)
+
+`start.sh` automatically falls back to building the backend from source if the Hub pull fails. The frontend is always built locally regardless. A full build takes ~5 minutes on first run.
 
 ---
 

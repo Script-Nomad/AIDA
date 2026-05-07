@@ -518,8 +518,10 @@ if [[ -n "$ORPHAN_POSTGRES" || -n "$ORPHAN_BACKEND" || -n "$ORPHAN_FRONTEND" ]] 
 fi
 
 # Dev mode: always build from source (hot reload needs local code)
-# Prod mode: pull pre-built images from Docker Hub (instant start)
-#            fall back to local build if pull fails (Hub not set up yet)
+# Prod mode: pull backend from Hub (instant start); always build the frontend
+#            locally because Dockerfile.prod bakes VITE_API_URL=/api at
+#            compile time — the Hub image (built from the base Dockerfile)
+#            runs the Vite dev server, not Nginx.
 if [[ "$MODE" == "dev" ]]; then
     log "Building Docker images from source..."
     if [[ "$CONTAINER_MODE" == "aida-pentest" ]]; then
@@ -528,17 +530,16 @@ if [[ "$MODE" == "dev" ]]; then
         $COMPOSE build --quiet backend frontend
     fi
 else
-    log "Pulling Docker images..."
-    if $COMPOSE pull --quiet 2>/dev/null; then
-        log "Images pulled from Docker Hub"
+    log "Pulling backend image..."
+    if $COMPOSE pull --quiet backend 2>/dev/null; then
+        log "Backend image pulled from Docker Hub"
     else
-        warn "Pull failed — building from source (first run may take a few minutes)..."
-        if [[ "$CONTAINER_MODE" == "aida-pentest" ]]; then
-            $COMPOSE build --quiet
-        else
-            $COMPOSE build --quiet backend frontend
-        fi
+        warn "Backend pull failed — building from source..."
+        $COMPOSE build --quiet backend
     fi
+    # Frontend must always be built locally: Dockerfile.prod bakes VITE_API_URL=/api
+    log "Building frontend (Nginx) from source..."
+    $COMPOSE build --quiet frontend
 fi
 
 # ==============================================================================
@@ -599,18 +600,18 @@ wait_for_service() {
     echo -e "${GREEN}Ready${NC}"
 }
 
-wait_for_service "PostgreSQL" "$COMPOSE exec -T postgres pg_isready -U aida" 30
-wait_for_service "Backend"    "curl -sf http://localhost:8000/health"         60
+wait_for_service "PostgreSQL" "$COMPOSE exec -T postgres pg_isready -U aida" 30 || { error "PostgreSQL did not become ready. Check: $COMPOSE logs postgres"; exit 1; }
+wait_for_service "Backend"    "curl -sf http://localhost:8000/health"         60 || { error "Backend did not become ready. Check: $COMPOSE logs backend"; exit 1; }
 
 if [[ "$MODE" == "dev" ]]; then
-    wait_for_service "Frontend" "curl -sf http://localhost:5173" 120
+    wait_for_service "Frontend" "curl -sf http://localhost:5173" 120 || { error "Frontend (Vite) did not start. Check: $COMPOSE logs frontend"; exit 1; }
 elif [[ "$TLS_MODE" == "domain" ]]; then
     # Let's Encrypt issuance can take 30-60s on first request
-    wait_for_service "Caddy" "curl -sfk https://localhost" 180
+    wait_for_service "Caddy" "curl -sfk https://localhost" 180 || { error "Caddy (TLS) did not start. Check: $COMPOSE logs caddy"; exit 1; }
 elif [[ "$TLS_MODE" == "lan" ]]; then
-    wait_for_service "Caddy" "curl -sfk https://localhost" 90
+    wait_for_service "Caddy" "curl -sfk https://localhost" 90 || { error "Caddy (LAN) did not start. Check: $COMPOSE logs caddy"; exit 1; }
 else
-    wait_for_service "Frontend" "curl -sf http://localhost:${AIDA_PORT}" 90
+    wait_for_service "Frontend" "curl -sf http://localhost:${AIDA_PORT}" 90 || { error "Frontend (Nginx) did not start. Check: $COMPOSE logs frontend"; exit 1; }
 fi
 
 # ==============================================================================
