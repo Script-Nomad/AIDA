@@ -1,12 +1,10 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Target, Server, Shield, ArrowLeft, AlertTriangle, Info, Eye, TrendingUp, Filter, FolderOpen, RefreshCw, FileText, Download, Send, Play, Copy, Check, Plus } from '../components/icons';
+import { Target, Server, Shield, ArrowLeft, AlertTriangle, Info, Eye, TrendingUp, Filter, FolderOpen, RefreshCw, Download, Send, Play, Copy, Check, Plus } from '../components/icons';
 import apiClient from '../services/api';
 import workspaceService from '../services/workspaceService';
 import EditableField from '../components/common/EditableField';
 import ReconTable from '../components/assessment/ReconTable';
-import PhaseSection from '../components/assessment/PhaseSection';
-import PhaseContentViewSimple from '../components/assessment/PhaseContentViewSimple';
 import CardsTable from '../components/assessment/CardsTable';
 import CommandHistoryRefactored from '../components/assessment/CommandHistoryRefactored';
 import ImportScanModal from '../components/assessment/ImportScanModal';
@@ -16,10 +14,9 @@ import AttackTimeline from '../components/assessment/AttackTimeline';
 import SendReportModal from '../components/assessment/SendReportModal';
 
 import ChangeContainerModal from '../components/workspace/ChangeContainerModal';
-import MarkdownDocumentsModal from '../components/assessment/MarkdownDocumentsModal';
+import MethodologyReport from '../components/assessment/MethodologyReport';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { getSeverityBarClass, SEVERITY_ORDER } from '../utils/severity';
-import { PHASE_NAMES } from '../utils/phases';
 
 // Group order: findings first, then observations, then info
 const CARD_TYPE_ORDER = { finding: 3, observation: 2, info: 1 };
@@ -44,16 +41,14 @@ const AssessmentDetail = () => {
   const [reconData, setReconData] = useState([]);
   const [reconCategories, setReconCategories] = useState(['endpoint', 'subdomain', 'service', 'technology']);
   const [cards, setCards] = useState([]);
-  const [sections, setSections] = useState([]);
   const [commands, setCommands] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activePhase, setActivePhase] = useState(1); // Phase 1 par défaut
   const [cardFilter, setCardFilter] = useState('overview'); // Filter for cards view
   const [addCardTrigger, setAddCardTrigger] = useState(0);
   const [showImportModal, setShowImportModal] = useState(false);
   const [openingWorkspace, setOpeningWorkspace] = useState(false);
   const [showChangeContainerModal, setShowChangeContainerModal] = useState(false);
-  const [showMarkdownModal, setShowMarkdownModal] = useState(false);
+
   const [exportingPdf, setExportingPdf] = useState(false);
   const [showSendReport, setShowSendReport] = useState(false);
   const [showStartAI, setShowStartAI] = useState(false);
@@ -123,21 +118,6 @@ const AssessmentDetail = () => {
       setReconData(prev => prev.filter(recon => recon.id !== data.recon_id));
     });
 
-    // Section events
-    const unsubscribeSectionUpdated = subscribe('section_updated', (data) => {
-
-      setSections(prev => {
-        const index = prev.findIndex(s => s.id === data.section.id);
-        if (index >= 0) {
-          const newSections = [...prev];
-          newSections[index] = data.section;
-          return newSections;
-        } else {
-          return [...prev, data.section];
-        }
-      });
-    });
-
     // Command events
     const unsubscribeCommandCompleted = subscribe('command_completed', (data) => {
 
@@ -163,7 +143,6 @@ const AssessmentDetail = () => {
       unsubscribeReconAdded();
       unsubscribeReconUpdated();
       unsubscribeReconDeleted();
-      unsubscribeSectionUpdated();
       unsubscribeCommandCompleted();
       unsubscribeCommandFailed();
       unsubscribeAssessmentUpdated();
@@ -175,12 +154,11 @@ const AssessmentDetail = () => {
       setLoading(true);
 
       // Load all data in parallel
-      const [assessmentRes, reconRes, reconTypesRes, cardsRes, sectionsRes, commandsRes] = await Promise.all([
+      const [assessmentRes, reconRes, reconTypesRes, cardsRes, commandsRes] = await Promise.all([
         apiClient.get(`/assessments/${id}`),
         apiClient.get(`/assessments/${id}/recon`),
         apiClient.get(`/assessments/${id}/recon/types`),
         apiClient.get(`/assessments/${id}/cards`),
-        apiClient.get(`/assessments/${id}/sections`),
         apiClient.get(`/assessments/${id}/commands?limit=10000`),
       ]);
 
@@ -188,7 +166,6 @@ const AssessmentDetail = () => {
       setReconData(reconRes.data);
       setReconCategories(reconTypesRes.data.length > 0 ? reconTypesRes.data : reconCategories);
       setCards(cardsRes.data);
-      setSections(sectionsRes.data);
       setCommands(commandsRes.data);
     } catch (error) {
       console.error('Failed to load assessment:', error);
@@ -301,11 +278,10 @@ const AssessmentDetail = () => {
       low: findings.filter(f => f.severity === 'LOW').length,
       commands: commands.length,
       recon: reconData.length,
-      phases: sections.length,
       recentCards: recentCards.length,
       last24hCards: last24hCards.length
     };
-  }, [cards, commands, reconData, sections]);
+  }, [cards, commands, reconData]);
 
   // Filter cards based on selected filter
   const filteredCards = useMemo(() => {
@@ -452,14 +428,7 @@ const AssessmentDetail = () => {
               </>
             )}
           </button>
-          <button
-            onClick={() => setShowMarkdownModal(true)}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-50 dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-500 rounded-md transition-colors"
-            title="View markdown documents"
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span>Docs</span>
-          </button>
+
           <button
             onClick={handleExportPdf}
             disabled={exportingPdf}
@@ -966,56 +935,8 @@ const AssessmentDetail = () => {
         </div>
       </div>
 
-      {/* Assessment Phases - Vue Pleine Largeur Simple */}
-      <div>
-        {/* Navigation horizontale + Header */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-neutral-100">Assessment Phases</h2>
-          </div>
-
-          {/* Navigation horizontale des phases */}
-          <div className="flex space-x-1 border-b border-gray-200 dark:border-neutral-700">
-            {[1, 2, 3, 4, 5].map((phaseNum) => {
-              const section = sections.find(s => s.section_type === `phase_${phaseNum}`);
-              const hasContent = section?.content;
-
-              return (
-                <button
-                  key={phaseNum}
-                  onClick={() => setActivePhase(phaseNum)}
-                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activePhase === phaseNum
-                    ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30'
-                    : 'border-transparent text-gray-500 dark:text-neutral-400 hover:text-gray-700 dark:hover:text-neutral-200 hover:border-gray-300 dark:hover:border-neutral-600'
-                    }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span>Phase {phaseNum}</span>
-                    {hasContent && (
-                      <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                    )}
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-neutral-400 mt-0.5">
-                    {PHASE_NAMES[phaseNum]}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Contenu de la phase active - Pleine largeur */}
-        {activePhase && (
-          <PhaseContentViewSimple
-            phaseNumber={activePhase}
-            assessmentId={id}
-            section={sections.find(s => s.section_type === `phase_${activePhase}`)}
-            onUpdate={loadAssessment}
-            cards={cards.filter(c => c.section_number === activePhase)}
-            commands={commands.filter(c => c.phase?.includes(`Phase ${activePhase}`))}
-          />
-        )}
-      </div>
+      {/* Methodology Report */}
+      <MethodologyReport assessmentId={parseInt(id)} />
 
       {/* Command History - Version compacte et navigable */}
       <div className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg">
@@ -1045,13 +966,7 @@ const AssessmentDetail = () => {
         />
       )}
 
-      {/* Markdown Documents Modal */}
-      {showMarkdownModal && (
-        <MarkdownDocumentsModal
-          assessmentId={parseInt(id)}
-          onClose={() => setShowMarkdownModal(false)}
-        />
-      )}
+
 
       {/* First-time MCP notice modal */}
       {showMcpNotice && (

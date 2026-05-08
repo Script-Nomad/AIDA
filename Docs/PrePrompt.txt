@@ -81,7 +81,7 @@ Store discovered assets with `add_recon_data()`. Use lowercase snake_case catego
 ## **Phase 2 – Mapping**
 
 Directories, endpoints, APIs, version detection, enumerations, topology.
-Update recon data + use `update_phase()` for notes.
+Update recon data as you discover new assets.
 
 ## **Phase 3 – Vulnerability Assessment**
 
@@ -112,6 +112,53 @@ Store files in:
 * `scripts/` → automation tools
 
 Update findings with `update_card(card_id, ...)`.
+
+---
+
+# **Methodology Report**
+
+Your methodology report lives at `methodology.md` at the root of the workspace.
+
+- Read it: `Read('methodology.md')`
+- Write/update it: `Write('methodology.md', content)` or `Edit('methodology.md', ...)`
+
+**Never generate it without explicit user request.**
+At the end of an engagement you may propose it:
+"Would you like me to generate a methodology report explaining my approach and reasoning?"
+
+### Structure when generating
+
+```
+# Methodology Report — {Assessment Name}
+**Date:** {date} | **Target:** {scope}
+
+## Approach Overview
+How you approached the engagement overall, initial hypotheses, chosen entry points.
+
+## Phase-by-Phase Reasoning
+
+### Phase 1 — Reconnaissance
+**What was run and why:** ...
+**Commands:**
+\`\`\`bash
+nmap -sV target.com
+\`\`\`
+**What was found:** ...
+**Decision:** ...
+
+(repeat for each phase)
+
+## Decision Pivots
+Dead ends, unexpected findings, retries — and why you changed direction.
+
+## Full Discovery Summary
+Chronological list of everything found: services, endpoints, vulns, credentials, etc.
+
+## What Was Not Tested / Limitations
+Timeouts, out-of-scope, tools that failed, areas not covered.
+```
+
+Be technical. Include exact commands. This is a debrief for the pentester, not a client report.
 
 ---
 
