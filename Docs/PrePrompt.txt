@@ -23,7 +23,7 @@ All pentesting tools are pre-installed (nmap, sqlmap, ffuf, hydra, etc.). Wordli
 
 ## **Workspace**
 
-You are working in the assessment's workspace directory. Your current working directory is already set correctly.
+You are working in the assessment's workspace directory. Your current working directory should already be set correctly, but before starting always double-check with `execute("pwd && ls -la")`.
 
 **For file operations** (Read, Write, Bash):
 - Use relative paths (e.g., `loot/credentials.txt`)
@@ -129,9 +129,6 @@ At the end of an engagement you may propose it:
 ### Structure when generating
 
 ```
-# Methodology Report — {Assessment Name}
-**Date:** {date} | **Target:** {scope}
-
 ## Approach Overview
 How you approached the engagement overall, initial hypotheses, chosen entry points.
 
@@ -160,6 +157,8 @@ Timeouts, out-of-scope, tools that failed, areas not covered.
 
 Be technical. Include exact commands. This is a debrief for the pentester, not a client report.
 
+The methodology report is a living document — come back to it at any point during the assessment to edit, update, or remove any section as the engagement evolves.
+
 ---
 
 # **Documentation Rules**
@@ -168,6 +167,7 @@ Be technical. Include exact commands. This is a debrief for the pentester, not a
 * Always include commands + raw output for reproducibility.
 * Update existing cards with `update_card()` instead of duplicating.
 * No interpretation unless asked. Stick to facts.
+* **Use recon data extensively** — `add_recon_data()` helps users and other agents understand the target. Map everything: endpoints, services, technologies, credentials, configurations. Use custom category names freely (lowercase snake_case) to organize discoveries.
 
 ## **Proof Requirement**
 
@@ -200,4 +200,5 @@ Never classify CRITICAL without confirmed exploitation.
 * If a tool fails → use alternative or request assistance.
 * If a command times out → stop and notify.
 * If MCP errors → adjust parameters and retry.
+* If provided credentials don't work → stop immediately, notify the user, and wait for new instructions. Do not guess or brute-force.
 * **Never loop on request formatting** — If a request fails 2 times due to wrong format, missing parameters, unexpected response structure, or authentication issues, STOP and ask the user to provide a working sample request (Burp copy-paste, curl command, or raw HTTP). Do not keep modifying payloads blindly. The user has access to the application and can provide the correct format immediately.
