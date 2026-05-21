@@ -73,7 +73,7 @@ const AssessmentDetail = () => {
   }, [showPdfMenu]);
 
   // WebSocket connection for real-time updates
-  const { subscribe, isConnected } = useWebSocket(id);
+  const { subscribe } = useWebSocket(id);
 
   useEffect(() => {
     loadAssessment();
@@ -191,7 +191,7 @@ const AssessmentDetail = () => {
   const updateAssessment = async (field, value) => {
     try {
       await apiClient.put(`/assessments/${id}`, { [field]: value });
-      setAssessment({ ...assessment, [field]: value });
+      setAssessment(prev => ({ ...prev, [field]: value }));
     } catch (error) {
       console.error('Failed to update assessment:', error);
     }
@@ -333,6 +333,15 @@ const AssessmentDetail = () => {
     }
     return [...result].sort(sortByScore);
   }, [cards, cardFilter]);
+
+  // Recon categories sorted by item count (descending) — counts precomputed to avoid O(n²) in sort
+  const sortedReconCategories = useMemo(() => {
+    const counts = {};
+    for (const item of reconData) {
+      counts[item.data_type] = (counts[item.data_type] || 0) + 1;
+    }
+    return [...reconCategories].sort((a, b) => (counts[b] || 0) - (counts[a] || 0));
+  }, [reconData, reconCategories]);
 
   // Calculate risk distribution percentages
   const getRiskDistribution = () => {
@@ -603,14 +612,6 @@ const AssessmentDetail = () => {
               </div>
             )}
           </div>
-          <span className={`px-2 py-1 rounded-full text-xs font-medium ${assessment.status === 'in_progress'
-            ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
-            : assessment.status === 'completed'
-              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-              : 'bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300'
-            }`}>
-            {assessment.status}
-          </span>
         </div>
       </div>
 
@@ -749,11 +750,7 @@ const AssessmentDetail = () => {
         <h2 className="text-sm font-semibold text-gray-800 dark:text-neutral-100">Reconnaissance Data</h2>
         <div className="space-y-3">
           {/* Render categories in pairs (2 columns) */}
-          {[...reconCategories]
-            .sort((a, b) =>
-              reconData.filter(i => i.data_type === b).length -
-              reconData.filter(i => i.data_type === a).length
-            )
+          {sortedReconCategories
             .reduce((pairs, category, index, sorted) => {
               if (index % 2 === 0) pairs.push(sorted.slice(index, index + 2));
               return pairs;
