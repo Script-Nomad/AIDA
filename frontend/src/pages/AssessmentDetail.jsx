@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Target, Server, Shield, ArrowLeft, AlertTriangle, Info, Eye, TrendingUp, Filter, FolderOpen, RefreshCw, Download, Send, Play, Copy, Check, Plus } from '../components/icons';
+import { Target, Server, Shield, ArrowLeft, AlertTriangle, Info, Eye, TrendingUp, Filter, FolderOpen, RefreshCw, Download, Send, Play, Copy, Check, Plus, ChevronDown } from '../components/icons';
 import apiClient from '../services/api';
 import workspaceService from '../services/workspaceService';
 import EditableField from '../components/common/EditableField';
@@ -50,6 +50,8 @@ const AssessmentDetail = () => {
   const [showChangeContainerModal, setShowChangeContainerModal] = useState(false);
 
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [showPdfMenu, setShowPdfMenu] = useState(false);
+  const pdfMenuRef = useRef(null);
   const [showSendReport, setShowSendReport] = useState(false);
   const [showStartAI, setShowStartAI] = useState(false);
   const [copiedCmd, setCopiedCmd] = useState(false);
@@ -57,6 +59,18 @@ const AssessmentDetail = () => {
   const [launchResult, setLaunchResult] = useState(null);
   const [showMcpNotice, setShowMcpNotice] = useState(false);
   const startAIRef = useRef(null);
+
+  // Close the PDF export menu when clicking outside it.
+  useEffect(() => {
+    if (!showPdfMenu) return;
+    const onDown = (e) => {
+      if (pdfMenuRef.current && !pdfMenuRef.current.contains(e.target)) {
+        setShowPdfMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [showPdfMenu]);
 
   // WebSocket connection for real-time updates
   const { subscribe, isConnected } = useWebSocket(id);
@@ -183,16 +197,20 @@ const AssessmentDetail = () => {
     }
   };
 
-  const handleExportPdf = async () => {
+  const handleExportPdf = async ({ includeSecrets = false } = {}) => {
+    setShowPdfMenu(false);
     setExportingPdf(true);
     try {
       const response = await apiClient.get(`/assessments/${id}/report/pdf`, {
+        params: { include_secrets: includeSecrets },
         responseType: 'blob',
       });
       const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const suffix = includeSecrets ? '_with_creds' : '';
+      const safeName = assessment.name.replace(/[^a-zA-Z0-9 _-]/g, '_');
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `AIDA_Report_${assessment.name.replace(/[^a-zA-Z0-9 _-]/g, '_')}.pdf`);
+      link.setAttribute('download', `AIDA_Report_${safeName}${suffix}.pdf`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -429,24 +447,60 @@ const AssessmentDetail = () => {
             )}
           </button>
 
-          <button
-            onClick={handleExportPdf}
-            disabled={exportingPdf}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-50 dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-500 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Export PDF report"
-          >
-            {exportingPdf ? (
-              <>
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                <span>Generating...</span>
-              </>
-            ) : (
-              <>
-                <Download className="w-3.5 h-3.5" />
-                <span>PDF</span>
-              </>
+          <div ref={pdfMenuRef} className="relative inline-flex">
+            <button
+              onClick={() => handleExportPdf({ includeSecrets: false })}
+              disabled={exportingPdf}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-50 dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-500 rounded-l-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Export PDF — passwords and tokens are masked"
+            >
+              {exportingPdf ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Generating...</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-3.5 h-3.5" />
+                  <span>PDF</span>
+                </>
+              )}
+            </button>
+            <button
+              onClick={() => setShowPdfMenu((v) => !v)}
+              disabled={exportingPdf}
+              className="inline-flex items-center px-1.5 py-1.5 text-xs text-neutral-700 dark:text-neutral-300 bg-neutral-50 dark:bg-neutral-700/50 border border-l-0 border-neutral-200 dark:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-500 rounded-r-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="More export options"
+              aria-haspopup="menu"
+              aria-expanded={showPdfMenu}
+            >
+              <ChevronDown className="w-3.5 h-3.5" />
+            </button>
+            {showPdfMenu && (
+              <div role="menu" className="absolute right-0 top-full mt-1 z-20 w-72 rounded-md border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 shadow-lg p-1 text-xs">
+                <button
+                  role="menuitem"
+                  onClick={() => handleExportPdf({ includeSecrets: false })}
+                  className="w-full text-left px-3 py-2 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700/60"
+                >
+                  <div className="font-medium text-neutral-800 dark:text-neutral-100">Download PDF — secrets masked</div>
+                  <div className="mt-0.5 text-[11px] text-neutral-500 dark:text-neutral-400 leading-snug">
+                    Passwords, tokens and cookies replaced by <code className="font-mono">[REDACTED]</code>. Safe to share with the client.
+                  </div>
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => handleExportPdf({ includeSecrets: true })}
+                  className="w-full text-left px-3 py-2 rounded hover:bg-rose-50 dark:hover:bg-rose-900/20"
+                >
+                  <div className="font-medium text-rose-700 dark:text-rose-300">Download PDF — include credentials</div>
+                  <div className="mt-0.5 text-[11px] text-neutral-500 dark:text-neutral-400 leading-snug">
+                    Plaintext passwords and tokens embedded. Internal use only — file is suffixed <code className="font-mono">_with_creds</code>.
+                  </div>
+                </button>
+              </div>
             )}
-          </button>
+          </div>
           <button
             onClick={() => setShowSendReport(true)}
             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-50 dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-500 rounded-md transition-colors"
