@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from auth import get_current_user, require_admin, verify_mcp_api_key
 from config import settings
 from database import init_db
-from api import assessments, cards, recon, sections, containers, folders, global_commands, search, system, credentials, websocket, workspace, pending_commands, context_documents, source_code, auth, reports, timeline, notifications, templates, users, api_keys
+from api import assessments, cards, recon, sections, containers, folders, global_commands, search, system, credentials, websocket, workspace, pending_commands, context_documents, source_code, auth, reports, timeline, notifications, templates, users, api_keys, asvs_requirements
 from api import commands
 from api.commands import global_router as commands_global_router
 from mcp_http_app import handle_mcp_request, mcp_lifespan
@@ -97,6 +97,8 @@ app.include_router(websocket.router, prefix=settings.API_V1_PREFIX)
 # Protected routers
 app.include_router(assessments.router, prefix=settings.API_V1_PREFIX, dependencies=protected)
 app.include_router(cards.router, prefix=settings.API_V1_PREFIX, dependencies=protected)
+app.include_router(asvs_requirements.router, prefix=settings.API_V1_PREFIX, dependencies=protected)
+app.include_router(asvs_requirements.catalog_router, prefix=settings.API_V1_PREFIX, dependencies=protected)
 app.include_router(recon.router, prefix=settings.API_V1_PREFIX, dependencies=protected)
 app.include_router(commands.router, prefix=settings.API_V1_PREFIX, dependencies=protected)
 app.include_router(commands_global_router, prefix=settings.API_V1_PREFIX, dependencies=protected)
