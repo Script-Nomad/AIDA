@@ -80,3 +80,27 @@ def init_db():
     # Always run create_all to pick up new models not yet in migrations.
     # create_all is safe: it only creates tables that don't already exist.
     Base.metadata.create_all(bind=engine)
+
+    # create_all does NOT add new columns to pre-existing tables. Ensure simple
+    # column additions exist via idempotent ADD COLUMN IF NOT EXISTS (no migration
+    # files needed, matching project convention).
+    _ensure_columns()
+
+
+def _ensure_columns():
+    """Idempotently add simple new columns to existing tables (Postgres)."""
+    from sqlalchemy import text
+
+    statements = [
+        # ASVS methodology fields on assessments
+        "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS methodology VARCHAR(50) DEFAULT 'standard'",
+        "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS asvs_level INTEGER",
+        "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS asvs_version VARCHAR(20)",
+    ]
+    try:
+        with engine.begin() as conn:
+            for stmt in statements:
+                conn.execute(text(stmt))
+    except Exception:
+        # Non-fatal: a fresh DB already has these via create_all.
+        pass

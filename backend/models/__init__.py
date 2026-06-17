@@ -15,6 +15,7 @@ from .user import User
 from .timeline_event import TimelineEvent
 from .notification_config import NotificationConfig
 from .api_key import ApiKey
+from .asvs_requirement import AsvsRequirement
 
 __all__ = [
     "Assessment",
@@ -31,5 +32,6 @@ __all__ = [
     "TimelineEvent",
     "NotificationConfig",
     "ApiKey",
+    "AsvsRequirement",
 ]
 
