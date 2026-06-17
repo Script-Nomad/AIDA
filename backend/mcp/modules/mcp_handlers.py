@@ -2,39 +2,11 @@
 MCP Tool Handlers - Refactored handlers for all MCP tools
 Handles: load_assessment, add_*, list_*, update_*, execute, pentesting tools
 """
-from typing import List, Optional, Tuple
+from typing import List, Optional
 from mcp.types import TextContent
 from scan_parsers import parse_scan_output
-
-
-def _calculate_cvss4_score(vector: str) -> Tuple[Optional[float], Optional[str]]:
-    """
-    Calculate CVSS 4.0 score and severity from a vector string.
-    Returns (score, severity) or (None, None) on error.
-    Uses the cvss library if available, otherwise falls back to None.
-    """
-    try:
-        from cvss import CVSS4
-        c = CVSS4(vector)
-        score = float(c.base_score)
-        severity = _score_to_severity(score)
-        return score, severity
-    except Exception:
-        pass
-    return None, None
-
-
-def _score_to_severity(score: float) -> str:
-    """Map CVSS 4.0 numeric score to severity label (FIRST standard thresholds)."""
-    if score >= 9.0:
-        return "CRITICAL"
-    elif score >= 7.0:
-        return "HIGH"
-    elif score >= 4.0:
-        return "MEDIUM"
-    elif score > 0.0:
-        return "LOW"
-    return "INFO"
+# CVSS 4.0 derivation lives in utils.cvss (shared with the ASVS requirements API).
+from utils.cvss import calculate_cvss4_score as _calculate_cvss4_score, score_to_severity as _score_to_severity
 
 
 async def handle_tool_call(name: str, arguments: dict, mcp_service) -> List[TextContent]:
@@ -66,6 +38,17 @@ async def handle_tool_call(name: str, arguments: dict, mcp_service) -> List[Text
 
         elif name == "delete_card":
             return await _handle_delete_card(arguments, mcp_service)
+
+        # ========== OWASP ASVS Grid ==========
+
+        elif name == "list_asvs_requirements":
+            return await _handle_list_asvs_requirements(arguments, mcp_service)
+
+        elif name == "get_asvs_summary":
+            return await _handle_get_asvs_summary(arguments, mcp_service)
+
+        elif name == "update_asvs_requirement":
+            return await _handle_update_asvs_requirement(arguments, mcp_service)
 
         # ========== Reconnaissance Management ==========
 
@@ -202,6 +185,31 @@ async def _handle_load_assessment(arguments: dict, mcp_service) -> List[TextCont
             log.warning(f"Failed to generate workspace tree: {e}")
     
 
+
+    # ASVS coverage (only for ASVS-methodology assessments). The full grid is
+    # NOT dumped here — the agent queries it on demand via list_asvs_requirements.
+    if assessment_data.get('methodology') == 'asvs':
+        try:
+            summary = await mcp_service.get_asvs_summary(assessment["id"])
+            bs = summary.get('by_status', {})
+            response += "## OWASP ASVS Methodology\n"
+            response += (
+                f"This is an **OWASP ASVS v{summary.get('asvs_version', '5.0.0')}** engagement "
+                f"(target level L{summary.get('asvs_level', '?')}).\n"
+            )
+            response += (
+                f"**Coverage:** {summary.get('tested', 0)}/{summary.get('total', 0)} tested "
+                f"({summary.get('coverage_pct', 0)}%) — PASS {bs.get('PASS', 0)} · "
+                f"FAIL {bs.get('FAIL', 0)} · N/A {bs.get('NA', 0)} · NOT_TESTED {bs.get('NOT_TESTED', 0)}.\n"
+            )
+            response += (
+                "Walk the grid with `list_asvs_requirements(status=\"NOT_TESTED\")`, record each verdict "
+                "with `update_asvs_requirement(...)`, and track progress with `get_asvs_summary()`. "
+                "Finish only when NOT_TESTED == 0.\n\n"
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger("aida-mcp").warning(f"Failed to load ASVS summary: {e}")
 
     # Add sections information
     sections = full_data.get('sections', [])
@@ -718,6 +726,104 @@ async def _handle_delete_card(arguments: dict, mcp_service) -> List[TextContent]
     return [TextContent(
         type="text",
         text=f"Card {card_id} deleted successfully"
+    )]
+
+
+# ========== OWASP ASVS Grid Handlers ==========
+
+async def _handle_list_asvs_requirements(arguments: dict, mcp_service) -> List[TextContent]:
+    """Handle list_asvs_requirements - read the ASVS grid on demand."""
+    if not mcp_service.current_assessment_id:
+        return [TextContent(type="text", text="No assessment loaded. Use 'load_assessment' first.")]
+
+    reqs = await mcp_service.list_asvs_requirements(
+        assessment_id=mcp_service.current_assessment_id,
+        status=arguments.get("status"),
+        chapter=arguments.get("chapter"),
+        level=arguments.get("level"),
+    )
+
+    if not reqs:
+        return [TextContent(type="text", text="No ASVS requirements match the given filters (is this an ASVS assessment?).")]
+
+    response = f"**ASVS requirements ({len(reqs)}):**\n\n"
+    current_section = None
+    for r in reqs:
+        section_key = f"{r.get('section_id')} {r.get('section_name')}"
+        if section_key != current_section:
+            current_section = section_key
+            response += f"\n### {section_key}\n"
+        line = f"- **{r.get('req_id')}** [L{r.get('level')}] [{r.get('status', 'NOT_TESTED')}] {r.get('description', '')}"
+        if r.get("test_type"):
+            line += f" _(test: {r['test_type']})_"
+        response += line + "\n"
+        if r.get("guidance"):
+            response += f"    - Suggested method: {r['guidance']}\n"
+        if r.get("suggested_command"):
+            response += f"    - Suggested command: `{r['suggested_command']}`\n"
+        if r.get("analysis"):
+            response += f"    - Analysis: {r['analysis']}\n"
+
+    return [TextContent(type="text", text=response)]
+
+
+async def _handle_get_asvs_summary(arguments: dict, mcp_service) -> List[TextContent]:
+    """Handle get_asvs_summary - coverage stats for the ASVS grid."""
+    if not mcp_service.current_assessment_id:
+        return [TextContent(type="text", text="No assessment loaded. Use 'load_assessment' first.")]
+
+    summary = await mcp_service.get_asvs_summary(mcp_service.current_assessment_id)
+    bs = summary.get("by_status", {})
+
+    response = (
+        f"**ASVS coverage** (v{summary.get('asvs_version', '?')}, "
+        f"target L{summary.get('asvs_level', '?')}):\n"
+        f"- Total: {summary.get('total', 0)}  |  Tested: {summary.get('tested', 0)} "
+        f"({summary.get('coverage_pct', 0)}%)\n"
+        f"- PASS {bs.get('PASS', 0)} · FAIL {bs.get('FAIL', 0)} · "
+        f"N/A {bs.get('NA', 0)} · NOT_TESTED {bs.get('NOT_TESTED', 0)}\n\n"
+        f"**Per chapter:**\n"
+    )
+    for ch in summary.get("by_chapter", []):
+        cbs = ch.get("by_status", {})
+        response += (
+            f"- {ch.get('chapter_id')} {ch.get('chapter_name')}: "
+            f"{ch.get('tested', 0)}/{ch.get('total', 0)} tested "
+            f"(FAIL {cbs.get('FAIL', 0)}, NOT_TESTED {cbs.get('NOT_TESTED', 0)})\n"
+        )
+    return [TextContent(type="text", text=response)]
+
+
+async def _handle_update_asvs_requirement(arguments: dict, mcp_service) -> List[TextContent]:
+    """Handle update_asvs_requirement - record a verdict for one requirement."""
+    if not mcp_service.current_assessment_id:
+        return [TextContent(type="text", text="No assessment loaded. Use 'load_assessment' first.")]
+
+    req_id = arguments["req_id"]
+
+    payload = {}
+    for field in ("status", "analysis", "command_used", "evidence", "severity"):
+        if arguments.get(field) is not None:
+            payload[field] = arguments[field]
+
+    # CVSS 4.0 vector → score/severity derived server-side (same as cards)
+    cvss_vector = arguments.get("cvss_vector")
+    if cvss_vector:
+        payload["cvss_vector"] = cvss_vector
+
+    result = await mcp_service.update_asvs_requirement(
+        assessment_id=mcp_service.current_assessment_id,
+        req_id=req_id,
+        **payload,
+    )
+
+    status_label = result.get("status", "?")
+    extra = ""
+    if result.get("cvss_score") is not None:
+        extra = f" — CVSS {result['cvss_score']} ({result.get('severity', 'N/A')})"
+    return [TextContent(
+        type="text",
+        text=f"ASVS {req_id} → {status_label}{extra}"
     )]
 
 

@@ -250,6 +250,62 @@ class AidaMCPService:
             log.error(f"Error updating section: {e}")
             raise
 
+    async def list_asvs_requirements(
+        self,
+        assessment_id: int,
+        status: Optional[str] = None,
+        chapter: Optional[str] = None,
+        level: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """List ASVS requirements for an assessment (optional filters)."""
+        try:
+            params = {}
+            if status:
+                params["status"] = status
+            if chapter:
+                params["chapter"] = chapter
+            if level is not None:
+                params["level"] = level
+            response = await self.http_client.get(
+                f"{self.backend_url}/assessments/{assessment_id}/asvs",
+                params=params,
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            log.error(f"Error listing ASVS requirements: {e}")
+            raise
+
+    async def get_asvs_summary(self, assessment_id: int) -> Dict[str, Any]:
+        """Get ASVS coverage summary for an assessment."""
+        try:
+            response = await self.http_client.get(
+                f"{self.backend_url}/assessments/{assessment_id}/asvs/summary"
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            log.error(f"Error getting ASVS summary: {e}")
+            raise
+
+    async def update_asvs_requirement(
+        self,
+        assessment_id: int,
+        req_id: str,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Update an ASVS requirement verdict (PATCH)."""
+        try:
+            response = await self.http_client.patch(
+                f"{self.backend_url}/assessments/{assessment_id}/asvs/{req_id}",
+                json=kwargs,
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            log.error(f"Error updating ASVS requirement {req_id}: {e}")
+            raise
+
     async def execute_command_backend(
         self,
         assessment_id: int,
