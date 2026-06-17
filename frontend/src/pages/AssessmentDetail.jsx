@@ -15,6 +15,7 @@ import SendReportModal from '../components/assessment/SendReportModal';
 
 import ChangeContainerModal from '../components/workspace/ChangeContainerModal';
 import MethodologyReport from '../components/assessment/MethodologyReport';
+import AsvsGrid from '../components/assessment/AsvsGrid';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { getSeverityBarClass, SEVERITY_ORDER } from '../utils/severity';
 
@@ -985,6 +986,13 @@ const AssessmentDetail = () => {
           )}
         </div>
       </div>
+
+      {/* OWASP ASVS verification grid (ASVS-methodology assessments only) */}
+      {assessment?.methodology === 'asvs' && (
+        <div className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg p-4">
+          <AsvsGrid assessmentId={parseInt(id)} />
+        </div>
+      )}
 
       {/* Methodology Report */}
       <MethodologyReport assessmentId={parseInt(id)} />
