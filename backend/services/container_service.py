@@ -79,6 +79,7 @@ class ContainerService:
 
     async def _run_command(self, command: List[str], timeout: float = 30.0) -> Dict[str, Any]:
         """Run a system command with a timeout to prevent hangs on docker socket issues"""
+        process = None
         try:
             process = await asyncio.create_subprocess_exec(
                 *command,
@@ -99,16 +100,27 @@ class ContainerService:
             }
 
         except asyncio.TimeoutError:
-            try:
-                process.kill()
-                await process.communicate()
-            except Exception:
-                pass
+            if process is not None:
+                try:
+                    process.kill()
+                    await process.communicate()
+                except Exception:
+                    pass
             return {
                 "success": False,
                 "returncode": -1,
                 "stdout": "",
                 "stderr": f"Command timed out after {timeout}s",
+            }
+
+        except FileNotFoundError as e:
+            # The docker binary itself is missing / not on PATH.
+            return {
+                "success": False,
+                "returncode": -1,
+                "stdout": "",
+                "stderr": f"Executable not found: {e}",
+                "error_type": "executable_not_found",
             }
 
         except Exception as e:
