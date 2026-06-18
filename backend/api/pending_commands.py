@@ -3,7 +3,7 @@ Pending Commands and Command Settings API endpoints
 """
 import json
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -90,17 +90,17 @@ def check_and_timeout_expired_commands(db: Session):
     for cmd in pending_cmds:
         # Use command-specific timeout or fall back to global setting
         cmd_timeout = cmd.timeout_seconds if cmd.timeout_seconds is not None else timeout_seconds
-        
+
         if cmd.created_at:
-            # Handle timezone-aware datetime
+            # Normalize created_at to naive UTC so we never mix aware/naive
+            # datetimes (created_at may be stored either way depending on the
+            # driver), which previously raised TypeError mid-loop.
             created_at = cmd.created_at
             if created_at.tzinfo is not None:
-                from datetime import timezone
-                now = datetime.now(timezone.utc)
-            
-            elapsed = (now - created_at.replace(tzinfo=None) if created_at.tzinfo else now - created_at)
-            elapsed_seconds = elapsed.total_seconds()
-            
+                created_at = created_at.astimezone(timezone.utc).replace(tzinfo=None)
+
+            elapsed_seconds = (now - created_at).total_seconds()
+
             if elapsed_seconds > cmd_timeout:
                 cmd.status = "timeout"
                 cmd.resolved_at = now
