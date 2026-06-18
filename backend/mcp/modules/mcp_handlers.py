@@ -4,6 +4,7 @@ Handles: load_assessment, add_*, list_*, update_*, execute, pentesting tools
 """
 import asyncio
 import json
+import time
 from typing import List, Optional
 from mcp.types import TextContent
 from scan_parsers import parse_scan_output
@@ -44,23 +45,32 @@ async def _await_command_approval(mcp_service, *, command, phase, matched_keywor
         return ("error", "invalid approval request")
 
     poll_interval = 2
-    elapsed = 0
-    while elapsed < timeout_seconds:
+    max_consecutive_failures = 5
+    consecutive_failures = 0
+    # Use a wall-clock deadline so the wait does not drift with request latency.
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
         await asyncio.sleep(poll_interval)
-        elapsed += poll_interval
         try:
             status_response = await mcp_service.http_client.get(
                 f"{mcp_service.backend_url}/pending-commands/{pending_id}"
             )
             if status_response.status_code == 200:
+                consecutive_failures = 0
                 pending_data = status_response.json()
                 current_status = pending_data.get("status", "pending")
                 if current_status == "executed":
                     return ("approved", pending_data.get("execution_result", {}))
                 if current_status in ("rejected", "timeout"):
                     return (current_status, None)
+            else:
+                consecutive_failures += 1
         except Exception:
-            pass
+            consecutive_failures += 1
+        # If the backend is unreachable for several polls in a row, stop waiting
+        # instead of silently spinning until the full timeout elapses.
+        if consecutive_failures >= max_consecutive_failures:
+            return ("error", "backend unreachable while waiting for approval")
 
     return ("timeout", None)
 
