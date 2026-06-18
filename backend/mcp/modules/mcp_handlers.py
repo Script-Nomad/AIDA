@@ -1138,7 +1138,6 @@ async def _handle_execute(arguments: dict, mcp_service) -> List[TextContent]:
             response_text += f"ERROR: {stderr[:500]}\n"
         else:
             response_text += f"ERROR: Command failed with exit code {result.get('returncode', 'unknown')}\n"
-            response_text += f"DEBUG: success={result.get('success')}, stdout={repr(result.get('stdout'))}, stderr={repr(result.get('stderr'))}, status={result.get('status')}\n"
 
     return [TextContent(type="text", text=response_text)]
 
