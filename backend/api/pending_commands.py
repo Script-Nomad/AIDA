@@ -377,30 +377,46 @@ async def approve_command(
     
     # Execute the command — route based on command_type
     container_service = ContainerService()
-    if pending_cmd.command_type == "python":
-        exec_result = await container_service.execute_and_log_python(
-            assessment_id=pending_cmd.assessment_id,
-            code=pending_cmd.command,
-            phase=pending_cmd.phase,
-            db=db
+    try:
+        if pending_cmd.command_type == "python":
+            exec_result = await container_service.execute_and_log_python(
+                assessment_id=pending_cmd.assessment_id,
+                code=pending_cmd.command,
+                phase=pending_cmd.phase,
+                db=db
+            )
+        elif pending_cmd.command_type == "http":
+            # pending_cmd.command stores the JSON-serialized HttpRequestRequest params
+            http_params_dict = json.loads(pending_cmd.command)
+            http_params = HttpRequestRequest(**http_params_dict)
+            exec_result = await container_service.execute_and_log_http_request(
+                assessment_id=pending_cmd.assessment_id,
+                params=http_params,
+                db=db
+            )
+        else:
+            exec_result = await container_service.execute_and_log_command(
+                assessment_id=pending_cmd.assessment_id,
+                command=pending_cmd.command,
+                phase=pending_cmd.phase,
+                db=db
+            )
+    except Exception as e:
+        # Don't leave the command stuck in "pending" (and re-approvable forever)
+        # if execution raises — bad JSON payload, container down, etc. Mark it
+        # as failed and surface the error to the caller.
+        pending_cmd.status = "failed"
+        pending_cmd.resolved_by = approval.approved_by
+        pending_cmd.resolved_at = datetime.utcnow()
+        pending_cmd.rejection_reason = f"Execution failed: {e}"
+        pending_cmd.execution_result = {"success": False, "error": str(e)}
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Command execution failed: {e}"
         )
-    elif pending_cmd.command_type == "http":
-        # pending_cmd.command stores the JSON-serialized HttpRequestRequest params
-        http_params_dict = json.loads(pending_cmd.command)
-        http_params = HttpRequestRequest(**http_params_dict)
-        exec_result = await container_service.execute_and_log_http_request(
-            assessment_id=pending_cmd.assessment_id,
-            params=http_params,
-            db=db
-        )
-    else:
-        exec_result = await container_service.execute_and_log_command(
-            assessment_id=pending_cmd.assessment_id,
-            command=pending_cmd.command,
-            phase=pending_cmd.phase,
-            db=db
-        )
-    
+
+
     # Update pending command
     pending_cmd.status = "executed"
     pending_cmd.resolved_by = approval.approved_by
