@@ -1,7 +1,10 @@
 """
 Nmap Parser - Parse nmap XML output
 """
-import xml.etree.ElementTree as ET
+# Uploaded scan files are untrusted input. ``defusedxml`` blocks entity
+# expansion (billion-laughs) and external-entity/DTD attacks that the stdlib
+# ``xml.etree.ElementTree`` parser is vulnerable to.
+from defusedxml.ElementTree import fromstring as safe_fromstring
 from typing import List, Dict, Any
 from .base_parser import BaseParser, ParsedItem, ParseResult, ItemType, ScanType
 
@@ -32,7 +35,7 @@ class NmapParser(BaseParser):
         try:
             # Parse XML
             text = content.decode('utf-8', errors='ignore')
-            root = ET.fromstring(text)
+            root = safe_fromstring(text)
             
             # Iterate over hosts
             for host in root.findall('.//host'):
