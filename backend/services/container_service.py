@@ -523,6 +523,22 @@ class ContainerService:
 
             return command_log
 
+        except Exception as e:
+            # Any other failure (container crash, broadcast/serialization error,
+            # ...) must not leave the row stuck in "running" forever. If the
+            # result was already recorded and only a later step failed, keep the
+            # recorded status instead of overwriting it.
+            if command_log.status == "running":
+                command_log.status = "failed"
+                command_log.success = False
+                command_log.stderr = self._sanitize_output(str(e))
+                try:
+                    await db.commit()
+                    await db.refresh(command_log)
+                except Exception:
+                    await db.rollback()
+            return command_log
+
     async def execute_python_stdin(
         self,
         code: str,
@@ -760,6 +776,19 @@ class ContainerService:
                 assessment_id=assessment_id
             )
 
+            return command_log
+
+        except Exception as e:
+            # Don't leave the row stuck in "running" on a non-timeout failure.
+            if command_log.status == "running":
+                command_log.status = "failed"
+                command_log.success = False
+                command_log.stderr = self._sanitize_output(str(e))
+                try:
+                    await db.commit()
+                    await db.refresh(command_log)
+                except Exception:
+                    await db.rollback()
             return command_log
 
     def _generate_http_python_script(self, params) -> str:
@@ -1024,6 +1053,19 @@ except Exception as _e:
                 assessment_id=assessment_id
             )
 
+            return command_log
+
+        except Exception as e:
+            # Don't leave the row stuck in "running" on a non-timeout failure.
+            if command_log.status == "running":
+                command_log.status = "failed"
+                command_log.success = False
+                command_log.stderr = self._sanitize_output(str(e))
+                try:
+                    await db.commit()
+                    await db.refresh(command_log)
+                except Exception:
+                    await db.rollback()
             return command_log
 
     async def create_workspace(self, assessment_name: str, db: Session = None) -> Dict[str, str]:
