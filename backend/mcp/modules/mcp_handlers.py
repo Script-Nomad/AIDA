@@ -1606,22 +1606,13 @@ async def _handle_scan(arguments: dict, mcp_service) -> List[TextContent]:
         return [TextContent(type="text",
                             text=f"Tool `{tool_name}` not available in container.")]
 
-    response = f"**Starting {scan_type} scan on `{target}`**\n"
-    response += f"Command: `{command}`\n\n"
-
-    result = await mcp_service.execute_container_command(
-        mcp_service.current_container, command
+    # Route the built command through the standard execution path so it honors
+    # the command-approval mode, credential substitution and history logging.
+    # Previously this called execute_container_command directly, which bypassed
+    # the approval/filter safety gate and left scans unlogged.
+    return await _handle_execute(
+        {"command": command, "phase": arguments.get("phase")}, mcp_service
     )
-
-    if result["success"]:
-        response += f"**Results:**\n```\n{result['stdout']}\n```"
-        if result.get("stderr"):
-            response += f"\n**Warnings:**\n```\n{result['stderr']}\n```"
-    else:
-        error_msg = result.get("stderr") or result.get("error", "Unknown error")
-        response += f"**Scan failed:**\n```\n{error_msg}\n```"
-
-    return [TextContent(type="text", text=response)]
 
 
 async def _handle_subdomain_enum(arguments: dict, mcp_service) -> List[TextContent]:
