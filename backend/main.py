@@ -59,12 +59,20 @@ async def lifespan(app: FastAPI):
         yield
 
 
+# Disable the interactive API docs (Swagger UI, ReDoc and the OpenAPI schema)
+# outside of development so the full API surface is not exposed publicly when
+# the backend is reachable through the reverse proxy (e.g. ``--domain`` mode).
+_docs_enabled = settings.ENVIRONMENT != "production"
+
 # Create FastAPI app
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description=settings.PROJECT_TAGLINE,
     lifespan=lifespan,
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
 )
 
 # Rate limiting
@@ -153,7 +161,7 @@ async def root():
         "message": f"{settings.PROJECT_NAME} API",
         "tagline": settings.PROJECT_TAGLINE,
         "version": settings.VERSION,
-        "docs": "/docs"
+        "docs": "/docs" if _docs_enabled else None,
     }
 
 
