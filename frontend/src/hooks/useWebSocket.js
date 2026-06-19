@@ -179,7 +179,10 @@ export function useWebSocket(assessmentId = null) {
     send({ type: 'ping' });
   }, [send]);
 
-  // Auto-connect on mount
+  // Connect on mount and whenever the target changes. `connect`/`disconnect`
+  // identities change with assessmentId (via getWebSocketUrl), so this single
+  // effect already tears down the old socket and opens the new one — a second
+  // assessmentId effect previously double-connected on every mount/change.
   useEffect(() => {
     connect();
 
@@ -190,20 +193,12 @@ export function useWebSocket(assessmentId = null) {
       }
     }, 30000);
 
-    // Cleanup on unmount
+    // Cleanup on unmount / before reconnecting
     return () => {
       clearInterval(pingInterval);
       disconnect();
     };
   }, [connect, disconnect, ping]);
-
-  // Reconnect when assessmentId changes
-  useEffect(() => {
-    if (assessmentId) {
-      disconnect();
-      connect();
-    }
-  }, [assessmentId, connect, disconnect]);
 
   return {
     isConnected,
