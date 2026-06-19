@@ -23,7 +23,7 @@ const Commands = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [expandedCommand, setExpandedCommand] = useState(null);
-  const [searchDebounceTimer, setSearchDebounceTimer] = useState(null);
+  const searchDebounceTimer = useRef(null);
 
   // Main tab state - initialize from URL param
   const [mainTab, setMainTab] = useState(searchParams.get('tab') || 'all'); // 'all' | 'approval' | 'analytics'
@@ -242,12 +242,11 @@ const Commands = () => {
   const handleSearchChange = (value) => {
     setSearchQuery(value);
     filterRef.current = { ...filterRef.current, searchQuery: value };
-    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
-    const timer = setTimeout(() => { if (!initialLoading) reloadWithFilters({ sq: value }); }, 500);
-    setSearchDebounceTimer(timer);
+    if (searchDebounceTimer.current) clearTimeout(searchDebounceTimer.current);
+    searchDebounceTimer.current = setTimeout(() => { if (!initialLoading) reloadWithFilters({ sq: value }); }, 500);
   };
 
-  useEffect(() => { return () => { if (searchDebounceTimer) clearTimeout(searchDebounceTimer); }; }, [searchDebounceTimer]);
+  useEffect(() => { return () => { if (searchDebounceTimer.current) clearTimeout(searchDebounceTimer.current); }; }, []);
 
   const sentryRef = useInfiniteScroll({ onLoadMore: loadMore, hasMore, loading, threshold: 300 });
 
