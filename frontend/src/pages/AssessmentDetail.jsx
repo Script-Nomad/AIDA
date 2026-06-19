@@ -133,16 +133,17 @@ const AssessmentDetail = () => {
       setReconData(prev => prev.filter(recon => recon.id !== data.recon_id));
     });
 
-    // Command events
-    const unsubscribeCommandCompleted = subscribe('command_completed', (data) => {
-
-      setCommands(prev => [data.command, ...prev]);
-    });
-
-    const unsubscribeCommandFailed = subscribe('command_failed', (data) => {
-
-      setCommands(prev => [data.command, ...prev]);
-    });
+    // Command events — de-dupe by id so a command delivered twice (e.g. a WS
+    // event plus a reload) doesn't create duplicate rows / React keys.
+    const prependCommand = (data) => {
+      setCommands(prev => {
+        const cmd = data?.command;
+        if (!cmd || prev.some(c => c.id === cmd.id)) return prev;
+        return [cmd, ...prev];
+      });
+    };
+    const unsubscribeCommandCompleted = subscribe('command_completed', prependCommand);
+    const unsubscribeCommandFailed = subscribe('command_failed', prependCommand);
 
     // Assessment events
     const unsubscribeAssessmentUpdated = subscribe('assessment_updated', (data) => {

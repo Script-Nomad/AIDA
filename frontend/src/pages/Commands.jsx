@@ -64,6 +64,13 @@ const Commands = () => {
     filterRef.current = { statusFilter, searchQuery, typeFilter };
   }, [statusFilter, searchQuery, typeFilter]);
 
+  // Mirror the shown command ids into a ref so WebSocket prepends can de-dupe
+  // (the handler closes over a stale `commands` value).
+  const commandIdsRef = useRef(new Set());
+  useEffect(() => {
+    commandIdsRef.current = new Set(commands.map(c => c.id));
+  }, [commands]);
+
   // Load initial data
   useEffect(() => {
     loadStats();
@@ -96,8 +103,9 @@ const Commands = () => {
         newCmd.assessment_name?.toLowerCase().includes(sq.toLowerCase());
       const cmdType = newCmd.command_type || 'shell';
       const typeMatch = tf === 'all' || cmdType === tf;
-      if (statusMatch && searchMatch && typeMatch) {
-        setCommands(prev => [newCmd, ...prev]);
+      if (statusMatch && searchMatch && typeMatch && !commandIdsRef.current.has(newCmd.id)) {
+        commandIdsRef.current.add(newCmd.id);
+        setCommands(prev => (prev.some(c => c.id === newCmd.id) ? prev : [newCmd, ...prev]));
         setTotal(prev => prev + 1);
       }
       loadStats();
