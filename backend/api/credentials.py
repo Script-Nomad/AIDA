@@ -3,7 +3,6 @@ API routes for Credentials management
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
 from database import get_db
 from models.credential import Credential
 from models.assessment import Assessment

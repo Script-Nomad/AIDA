@@ -5,7 +5,7 @@ Nmap Parser - Parse nmap XML output
 # expansion (billion-laughs) and external-entity/DTD attacks that the stdlib
 # ``xml.etree.ElementTree`` parser is vulnerable to.
 from defusedxml.ElementTree import fromstring as safe_fromstring
-from typing import List, Dict, Any
+from typing import List
 from .base_parser import BaseParser, ParsedItem, ParseResult, ItemType, ScanType
 
 
