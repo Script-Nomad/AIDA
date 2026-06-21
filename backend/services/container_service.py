@@ -79,7 +79,24 @@ class ContainerService:
 
     async def _run_command(self, command: List[str], timeout: float = 30.0) -> Dict[str, Any]:
         """Run a system command with a timeout to prevent hangs on docker socket issues"""
+        MAX_OUTPUT_BYTES = 10 * 1024 * 1024  # keep at most 10 MB per stream in memory
         process = None
+
+        async def _read_capped(stream):
+            """Drain a stream fully (so the child never blocks) but only keep
+            up to MAX_OUTPUT_BYTES in memory to avoid an output-size DoS."""
+            buf = bytearray()
+            truncated = False
+            while True:
+                chunk = await stream.read(65536)
+                if not chunk:
+                    break
+                if len(buf) < MAX_OUTPUT_BYTES:
+                    buf.extend(chunk[: MAX_OUTPUT_BYTES - len(buf)])
+                else:
+                    truncated = True
+            return bytes(buf), truncated
+
         try:
             process = await asyncio.create_subprocess_exec(
                 *command,
@@ -87,16 +104,27 @@ class ContainerService:
                 stderr=asyncio.subprocess.PIPE
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
+            (stdout, out_truncated), (stderr, err_truncated), returncode = await asyncio.wait_for(
+                asyncio.gather(
+                    _read_capped(process.stdout),
+                    _read_capped(process.stderr),
+                    process.wait(),
+                ),
                 timeout=timeout
             )
 
+            out = stdout.decode('utf-8', errors='replace').strip()
+            err = stderr.decode('utf-8', errors='replace').strip()
+            if out_truncated:
+                out += "\n...(output truncated)"
+            if err_truncated:
+                err += "\n...(output truncated)"
+
             return {
-                "success": process.returncode == 0,
-                "returncode": process.returncode,
-                "stdout": stdout.decode('utf-8', errors='replace').strip(),
-                "stderr": stderr.decode('utf-8', errors='replace').strip(),
+                "success": returncode == 0,
+                "returncode": returncode,
+                "stdout": out,
+                "stderr": err,
             }
 
         except asyncio.TimeoutError:
