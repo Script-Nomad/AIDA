@@ -24,6 +24,7 @@ import workspaceService from '../services/workspaceService';
 import notificationService from '../services/notificationService';
 import { useTheme } from '../contexts/ThemeContext';
 import McpAccessSection from '../components/common/McpAccessSection';
+import { useSetting } from '../hooks/useSetting';
 
 // Backend root for the API docs links, derived from the configured API base so
 // they work outside localhost. (Docs are only served when ENVIRONMENT != production.)
@@ -42,10 +43,15 @@ const Settings = () => {
   });
   const [systemInfo, setSystemInfo] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [commandTimeout, setCommandTimeout] = useState(300);
-  const [originalTimeout, setOriginalTimeout] = useState(300);
-  const [savingTimeout, setSavingTimeout] = useState(false);
-  const [timeoutMessage, setTimeoutMessage] = useState(null);
+  const {
+    value: commandTimeout, setValue: setCommandTimeout, original: originalTimeout,
+    saving: savingTimeout, message: timeoutMessage, save: handleSaveTimeout,
+  } = useSetting('command_timeout', {
+    default: 300,
+    validate: (v) => (v >= 30 && v <= 1800) ? null : 'Timeout must be between 30 and 1800 seconds (30s to 30min)',
+    successText: 'Command timeout updated successfully',
+    errorText: 'Failed to save timeout setting',
+  });
   const [approvalTimeout, setApprovalTimeout] = useState(30);
   const [originalApprovalTimeout, setOriginalApprovalTimeout] = useState(30);
   const [savingApprovalTimeout, setSavingApprovalTimeout] = useState(false);
@@ -56,22 +62,45 @@ const Settings = () => {
   const [containerMessage, setContainerMessage] = useState(null);
   const [availableContainers, setAvailableContainers] = useState([]);
   const [loadingContainers, setLoadingContainers] = useState(false);
-  const [outputMaxLength, setOutputMaxLength] = useState(5000);
-  const [originalOutputMaxLength, setOriginalOutputMaxLength] = useState(5000);
-  const [savingOutputMaxLength, setSavingOutputMaxLength] = useState(false);
-  const [outputMaxLengthMessage, setOutputMaxLengthMessage] = useState(null);
-  const [pythonExecOutputMaxLength, setPythonExecOutputMaxLength] = useState(5000);
-  const [originalPythonExecOutputMaxLength, setOriginalPythonExecOutputMaxLength] = useState(5000);
-  const [savingPythonExecOutputMaxLength, setSavingPythonExecOutputMaxLength] = useState(false);
-  const [pythonExecOutputMaxLengthMessage, setPythonExecOutputMaxLengthMessage] = useState(null);
-  const [httpRequestOutputMaxLength, setHttpRequestOutputMaxLength] = useState(5000);
-  const [originalHttpRequestOutputMaxLength, setOriginalHttpRequestOutputMaxLength] = useState(5000);
-  const [savingHttpRequestOutputMaxLength, setSavingHttpRequestOutputMaxLength] = useState(false);
-  const [httpRequestOutputMaxLengthMessage, setHttpRequestOutputMaxLengthMessage] = useState(null);
-  const [commandHistoryLimit, setCommandHistoryLimit] = useState(10);
-  const [originalHistoryLimit, setOriginalHistoryLimit] = useState(10);
-  const [savingHistoryLimit, setSavingHistoryLimit] = useState(false);
-  const [historyLimitMessage, setHistoryLimitMessage] = useState(null);
+  const _validateOutputLen = (msg) => (v) => (v === -1 || (v >= 500 && v <= 100000)) ? null : msg;
+  const {
+    value: outputMaxLength, setValue: setOutputMaxLength, original: originalOutputMaxLength,
+    saving: savingOutputMaxLength, message: outputMaxLengthMessage, save: handleSaveOutputMaxLength,
+  } = useSetting('output_max_length', {
+    default: 5000,
+    validate: _validateOutputLen('Output max length must be between 500 and 100000 characters, or -1 for unlimited'),
+    successText: 'Output max length updated successfully',
+    errorText: 'Failed to save output max length setting',
+  });
+  const {
+    value: pythonExecOutputMaxLength, setValue: setPythonExecOutputMaxLength,
+    original: originalPythonExecOutputMaxLength, saving: savingPythonExecOutputMaxLength,
+    message: pythonExecOutputMaxLengthMessage, save: handleSavePythonExecOutputMaxLength,
+  } = useSetting('python_exec_output_max_length', {
+    default: 5000,
+    validate: _validateOutputLen('Must be between 500 and 100000 characters, or -1 for unlimited'),
+    successText: 'python_exec output limit updated',
+    errorText: 'Failed to save',
+  });
+  const {
+    value: httpRequestOutputMaxLength, setValue: setHttpRequestOutputMaxLength,
+    original: originalHttpRequestOutputMaxLength, saving: savingHttpRequestOutputMaxLength,
+    message: httpRequestOutputMaxLengthMessage, save: handleSaveHttpRequestOutputMaxLength,
+  } = useSetting('http_request_output_max_length', {
+    default: 5000,
+    validate: _validateOutputLen('Must be between 500 and 100000 characters, or -1 for unlimited'),
+    successText: 'http_request output limit updated',
+    errorText: 'Failed to save',
+  });
+  const {
+    value: commandHistoryLimit, setValue: setCommandHistoryLimit, original: originalHistoryLimit,
+    saving: savingHistoryLimit, message: historyLimitMessage, save: handleSaveCommandHistoryLimit,
+  } = useSetting('command_history_limit', {
+    default: 10,
+    validate: (v) => (v >= 0 && v <= 100) ? null : 'Command history limit must be between 0 and 100',
+    successText: 'Command history limit updated successfully',
+    errorText: 'Failed to save command history limit setting',
+  });
   const [openingWorkspace, setOpeningWorkspace] = useState(false);
   const [workspaceMessage, setWorkspaceMessage] = useState(null);
   // Upload limits
@@ -86,12 +115,7 @@ const Settings = () => {
   useEffect(() => {
     loadSystemStatus();
     loadSystemInfo();
-    loadCommandTimeout();
     loadApprovalTimeout();
-    loadOutputMaxLength();
-    loadPythonExecOutputMaxLength();
-    loadHttpRequestOutputMaxLength();
-    loadCommandHistoryLimit();
     loadExegolContainers();
     loadUploadLimits();
   }, []);
@@ -127,34 +151,6 @@ const Settings = () => {
     }
   };
 
-  const loadCommandTimeout = async () => {
-    try {
-      const { data } = await apiClient.get('/system/settings/command_timeout');
-      const timeoutValue = parseInt(data.value);
-      setCommandTimeout(timeoutValue);
-      setOriginalTimeout(timeoutValue);
-    } catch (error) {
-      // console.error('Failed to load command timeout:', error);
-      // Use default value if loading fails
-      setCommandTimeout(300);
-      setOriginalTimeout(300);
-    }
-  };
-
-  const loadOutputMaxLength = async () => {
-    try {
-      const { data } = await apiClient.get('/system/settings/output_max_length');
-      const maxLengthValue = parseInt(data.value);
-      setOutputMaxLength(maxLengthValue);
-      setOriginalOutputMaxLength(maxLengthValue);
-    } catch (error) {
-      // console.error('Failed to load output max length:', error);
-      // Use default value if loading fails
-      setOutputMaxLength(5000);
-      setOriginalOutputMaxLength(5000);
-    }
-  };
-
   const loadExegolContainers = async () => {
     setLoadingContainers(true);
     try {
@@ -165,34 +161,6 @@ const Settings = () => {
       setAvailableContainers([]);
     } finally {
       setLoadingContainers(false);
-    }
-  };
-
-  const handleSaveTimeout = async () => {
-    // Validate timeout value
-    if (commandTimeout < 30 || commandTimeout > 1800) {
-      setTimeoutMessage({ type: 'error', text: 'Timeout must be between 30 and 1800 seconds (30s to 30min)' });
-      setTimeout(() => setTimeoutMessage(null), 5000);
-      return;
-    }
-
-    setSavingTimeout(true);
-    setTimeoutMessage(null);
-
-    try {
-      await apiClient.put('/system/settings/command_timeout', {
-        value: commandTimeout.toString()
-      });
-
-      setOriginalTimeout(commandTimeout);
-      setTimeoutMessage({ type: 'success', text: 'Command timeout updated successfully' });
-      setTimeout(() => setTimeoutMessage(null), 3000);
-    } catch (error) {
-      console.error('Failed to save command timeout:', error);
-      setTimeoutMessage({ type: 'error', text: error.response?.data?.detail || 'Failed to save timeout setting' });
-      setTimeout(() => setTimeoutMessage(null), 5000);
-    } finally {
-      setSavingTimeout(false);
     }
   };
 
@@ -242,152 +210,16 @@ const Settings = () => {
     setApprovalTimeout(seconds);
   };
 
-  const handleSaveOutputMaxLength = async () => {
-    // Validate output max length value
-    if (outputMaxLength !== -1 && (outputMaxLength < 500 || outputMaxLength > 100000)) {
-      setOutputMaxLengthMessage({ type: 'error', text: 'Output max length must be between 500 and 100000 characters, or -1 for unlimited' });
-      setTimeout(() => setOutputMaxLengthMessage(null), 5000);
-      return;
-    }
-
-    setSavingOutputMaxLength(true);
-    setOutputMaxLengthMessage(null);
-
-    try {
-      await apiClient.put('/system/settings/output_max_length', {
-        value: outputMaxLength.toString()
-      });
-
-      setOriginalOutputMaxLength(outputMaxLength);
-      setOutputMaxLengthMessage({ type: 'success', text: 'Output max length updated successfully' });
-      setTimeout(() => setOutputMaxLengthMessage(null), 3000);
-    } catch (error) {
-      console.error('Failed to save output max length:', error);
-      setOutputMaxLengthMessage({ type: 'error', text: error.response?.data?.detail || 'Failed to save output max length setting' });
-      setTimeout(() => setOutputMaxLengthMessage(null), 5000);
-    } finally {
-      setSavingOutputMaxLength(false);
-    }
-  };
-
   const handleOutputMaxLengthPreset = (value) => {
     setOutputMaxLength(value);
-  };
-
-  const loadPythonExecOutputMaxLength = async () => {
-    try {
-      const { data } = await apiClient.get('/system/settings/python_exec_output_max_length');
-      const val = parseInt(data.value);
-      setPythonExecOutputMaxLength(val);
-      setOriginalPythonExecOutputMaxLength(val);
-    } catch {
-      setPythonExecOutputMaxLength(5000);
-      setOriginalPythonExecOutputMaxLength(5000);
-    }
-  };
-
-  const handleSavePythonExecOutputMaxLength = async () => {
-    if (pythonExecOutputMaxLength !== -1 && (pythonExecOutputMaxLength < 500 || pythonExecOutputMaxLength > 100000)) {
-      setPythonExecOutputMaxLengthMessage({ type: 'error', text: 'Must be between 500 and 100000 characters, or -1 for unlimited' });
-      setTimeout(() => setPythonExecOutputMaxLengthMessage(null), 5000);
-      return;
-    }
-    setSavingPythonExecOutputMaxLength(true);
-    setPythonExecOutputMaxLengthMessage(null);
-    try {
-      await apiClient.put('/system/settings/python_exec_output_max_length', { value: pythonExecOutputMaxLength.toString() });
-      setOriginalPythonExecOutputMaxLength(pythonExecOutputMaxLength);
-      setPythonExecOutputMaxLengthMessage({ type: 'success', text: 'python_exec output limit updated' });
-      setTimeout(() => setPythonExecOutputMaxLengthMessage(null), 3000);
-    } catch (error) {
-      setPythonExecOutputMaxLengthMessage({ type: 'error', text: error.response?.data?.detail || 'Failed to save' });
-      setTimeout(() => setPythonExecOutputMaxLengthMessage(null), 5000);
-    } finally {
-      setSavingPythonExecOutputMaxLength(false);
-    }
   };
 
   const handlePythonExecOutputMaxLengthPreset = (value) => {
     setPythonExecOutputMaxLength(value);
   };
 
-  const loadHttpRequestOutputMaxLength = async () => {
-    try {
-      const { data } = await apiClient.get('/system/settings/http_request_output_max_length');
-      const val = parseInt(data.value);
-      setHttpRequestOutputMaxLength(val);
-      setOriginalHttpRequestOutputMaxLength(val);
-    } catch {
-      setHttpRequestOutputMaxLength(5000);
-      setOriginalHttpRequestOutputMaxLength(5000);
-    }
-  };
-
-  const handleSaveHttpRequestOutputMaxLength = async () => {
-    if (httpRequestOutputMaxLength !== -1 && (httpRequestOutputMaxLength < 500 || httpRequestOutputMaxLength > 100000)) {
-      setHttpRequestOutputMaxLengthMessage({ type: 'error', text: 'Must be between 500 and 100000 characters, or -1 for unlimited' });
-      setTimeout(() => setHttpRequestOutputMaxLengthMessage(null), 5000);
-      return;
-    }
-    setSavingHttpRequestOutputMaxLength(true);
-    setHttpRequestOutputMaxLengthMessage(null);
-    try {
-      await apiClient.put('/system/settings/http_request_output_max_length', { value: httpRequestOutputMaxLength.toString() });
-      setOriginalHttpRequestOutputMaxLength(httpRequestOutputMaxLength);
-      setHttpRequestOutputMaxLengthMessage({ type: 'success', text: 'http_request output limit updated' });
-      setTimeout(() => setHttpRequestOutputMaxLengthMessage(null), 3000);
-    } catch (error) {
-      setHttpRequestOutputMaxLengthMessage({ type: 'error', text: error.response?.data?.detail || 'Failed to save' });
-      setTimeout(() => setHttpRequestOutputMaxLengthMessage(null), 5000);
-    } finally {
-      setSavingHttpRequestOutputMaxLength(false);
-    }
-  };
-
   const handleHttpRequestOutputMaxLengthPreset = (value) => {
     setHttpRequestOutputMaxLength(value);
-  };
-
-  const loadCommandHistoryLimit = async () => {
-    try {
-      const { data } = await apiClient.get('/system/settings/command_history_limit');
-      const limitValue = parseInt(data.value);
-      setCommandHistoryLimit(limitValue);
-      setOriginalHistoryLimit(limitValue);
-    } catch (error) {
-      console.error('Failed to load command history limit:', error);
-      // Use default value if loading fails
-      setCommandHistoryLimit(10);
-      setOriginalHistoryLimit(10);
-    }
-  };
-
-  const handleSaveCommandHistoryLimit = async () => {
-    // Validate history limit value
-    if (commandHistoryLimit < 0 || commandHistoryLimit > 100) {
-      setHistoryLimitMessage({ type: 'error', text: 'Command history limit must be between 0 and 100' });
-      setTimeout(() => setHistoryLimitMessage(null), 5000);
-      return;
-    }
-
-    setSavingHistoryLimit(true);
-    setHistoryLimitMessage(null);
-
-    try {
-      await apiClient.put('/system/settings/command_history_limit', {
-        value: commandHistoryLimit.toString()
-      });
-
-      setOriginalHistoryLimit(commandHistoryLimit);
-      setHistoryLimitMessage({ type: 'success', text: 'Command history limit updated successfully' });
-      setTimeout(() => setHistoryLimitMessage(null), 3000);
-    } catch (error) {
-      console.error('Failed to save command history limit:', error);
-      setHistoryLimitMessage({ type: 'error', text: error.response?.data?.detail || 'Failed to save command history limit setting' });
-      setTimeout(() => setHistoryLimitMessage(null), 5000);
-    } finally {
-      setSavingHistoryLimit(false);
-    }
   };
 
   const handleHistoryLimitPreset = (value) => {
