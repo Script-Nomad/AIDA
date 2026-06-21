@@ -6,6 +6,9 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from config import settings
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Sync engine (legacy compatibility)
 engine = create_engine(
@@ -74,8 +77,10 @@ def init_db():
             alembic_cfg.set_main_option("script_location", os.path.join(backend_dir, "alembic"))
             alembic_cfg.set_main_option("sqlalchemy.url", str(settings.DATABASE_URL))
             command.upgrade(alembic_cfg, "head")
-    except Exception:
-        pass
+    except Exception as e:
+        # Non-fatal: create_all() below still provisions the schema, but a real
+        # migration/permission error should be visible rather than swallowed.
+        logger.warning("Alembic upgrade failed; falling back to create_all", error=str(e))
 
     # Always run create_all to pick up new models not yet in migrations.
     # create_all is safe: it only creates tables that don't already exist.
@@ -101,6 +106,6 @@ def _ensure_columns():
         with engine.begin() as conn:
             for stmt in statements:
                 conn.execute(text(stmt))
-    except Exception:
+    except Exception as e:
         # Non-fatal: a fresh DB already has these via create_all.
-        pass
+        logger.warning("_ensure_columns failed (non-fatal)", error=str(e))
