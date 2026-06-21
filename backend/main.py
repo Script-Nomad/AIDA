@@ -106,6 +106,7 @@ app.include_router(websocket.router, prefix=settings.API_V1_PREFIX)
 # Protected routers
 app.include_router(assessments.router, prefix=settings.API_V1_PREFIX, dependencies=protected)
 app.include_router(cards.router, prefix=settings.API_V1_PREFIX, dependencies=protected)
+app.include_router(cards.global_router, prefix=settings.API_V1_PREFIX, dependencies=protected)
 app.include_router(asvs_requirements.router, prefix=settings.API_V1_PREFIX, dependencies=protected)
 app.include_router(asvs_requirements.catalog_router, prefix=settings.API_V1_PREFIX, dependencies=protected)
 app.include_router(recon.router, prefix=settings.API_V1_PREFIX, dependencies=protected)

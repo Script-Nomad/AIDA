@@ -16,6 +16,28 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/assessments/{assessment_id}/cards", tags=["cards"])
 
+# Global router (no per-assessment prefix) for cross-assessment aggregates such
+# as the dashboard, which previously issued one /cards request per assessment.
+global_router = APIRouter(prefix="/findings", tags=["findings"])
+
+
+@global_router.get("")
+async def list_all_findings(db: Session = Depends(get_db)):
+    """Return every 'finding' card across all assessments in a single query."""
+    rows = (
+        db.query(Card, Assessment.name)
+        .join(Assessment, Card.assessment_id == Assessment.id)
+        .filter(Card.card_type == "finding")
+        .order_by(Card.created_at.desc())
+        .all()
+    )
+    findings = []
+    for card, assessment_name in rows:
+        item = CardResponse.model_validate(card).model_dump(mode="json")
+        item["assessment_name"] = assessment_name
+        findings.append(item)
+    return findings
+
 
 @router.get("", response_model=List[CardResponse])
 async def list_cards(
