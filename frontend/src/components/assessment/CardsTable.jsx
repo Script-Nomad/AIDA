@@ -121,7 +121,7 @@ const CardsTable = ({ cards, assessmentId, onUpdate, hideAddButton = false, exte
     setExpandedCards(newExpanded);
   };
 
-  const getCardIcon = (cardType, severity) => {
+  const getCardIcon = (cardType) => {
     switch (cardType) {
       case 'finding':
         return <Shield className="w-4 h-4" />;
@@ -338,7 +338,7 @@ const CardsTable = ({ cards, assessmentId, onUpdate, hideAddButton = false, exte
 
                     {/* Type Icon */}
                     <div className={`flex-shrink-0 ${getCardTypeColor(cardType)}`}>
-                      {getCardIcon(cardType, severity)}
+                      {getCardIcon(cardType)}
                     </div>
 
                     {/* CVSS score or severity fallback */}
