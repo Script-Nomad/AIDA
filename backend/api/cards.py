@@ -128,6 +128,14 @@ async def update_card(
 
     # Update fields (partial update - only provided fields)
     update_data = card_update.model_dump(exclude_unset=True)
+
+    # Validate card_type on update too (create_card already does this).
+    if "card_type" in update_data and update_data["card_type"] not in ["finding", "observation", "info"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="card_type must be one of: finding, observation, info"
+        )
+
     for field, value in update_data.items():
         setattr(card, field, value)
 
