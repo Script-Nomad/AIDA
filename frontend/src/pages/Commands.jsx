@@ -235,6 +235,17 @@ const Commands = () => {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Switch the main tab and reflect it in the URL so a refresh / shared link
+  // keeps the active tab.
+  const changeMainTab = (tab) => {
+    setMainTab(tab);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', tab);
+      return next;
+    }, { replace: true });
+  };
+
   const handleStatusFilterChange = (newStatus) => {
     setStatusFilter(newStatus);
     filterRef.current = { ...filterRef.current, statusFilter: newStatus };
@@ -453,7 +464,7 @@ const Commands = () => {
       {/* Main Tabs */}
       <div className="flex items-center gap-6 border-b border-neutral-200 dark:border-neutral-700">
         <button
-          onClick={() => setMainTab('all')}
+          onClick={() => changeMainTab('all')}
           className={`pb-3 text-sm font-medium border-b-2 -mb-px transition-colors ${mainTab === 'all'
             ? 'border-neutral-900 dark:border-neutral-100 text-neutral-900 dark:text-neutral-100'
             : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'
@@ -462,7 +473,7 @@ const Commands = () => {
           All Commands
         </button>
         <button
-          onClick={() => setMainTab('approval')}
+          onClick={() => changeMainTab('approval')}
           className={`pb-3 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-2 ${mainTab === 'approval'
             ? 'border-neutral-900 dark:border-neutral-100 text-neutral-900 dark:text-neutral-100'
             : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'
@@ -476,7 +487,7 @@ const Commands = () => {
           )}
         </button>
         <button
-          onClick={() => setMainTab('analytics')}
+          onClick={() => changeMainTab('analytics')}
           className={`pb-3 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-2 ${mainTab === 'analytics'
             ? 'border-neutral-900 dark:border-neutral-100 text-neutral-900 dark:text-neutral-100'
             : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'
