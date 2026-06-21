@@ -16,6 +16,7 @@ from models.platform_settings import PlatformSettings
 from config import settings
 from utils.logger import get_logger
 from utils.log_context import log_context, timed_operation
+from utils.subprocess_runner import run_subprocess
 from websocket.manager import manager
 from websocket.events import event_command_completed, event_command_failed, EventType, create_event
 
@@ -78,86 +79,24 @@ class ContainerService:
         return sanitized
 
     async def _run_command(self, command: List[str], timeout: float = 30.0) -> Dict[str, Any]:
-        """Run a system command with a timeout to prevent hangs on docker socket issues"""
-        MAX_OUTPUT_BYTES = 10 * 1024 * 1024  # keep at most 10 MB per stream in memory
-        process = None
-
-        async def _read_capped(stream):
-            """Drain a stream fully (so the child never blocks) but only keep
-            up to MAX_OUTPUT_BYTES in memory to avoid an output-size DoS."""
-            buf = bytearray()
-            truncated = False
-            while True:
-                chunk = await stream.read(65536)
-                if not chunk:
-                    break
-                if len(buf) < MAX_OUTPUT_BYTES:
-                    buf.extend(chunk[: MAX_OUTPUT_BYTES - len(buf)])
-                else:
-                    truncated = True
-            return bytes(buf), truncated
-
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-
-            (stdout, out_truncated), (stderr, err_truncated), returncode = await asyncio.wait_for(
-                asyncio.gather(
-                    _read_capped(process.stdout),
-                    _read_capped(process.stderr),
-                    process.wait(),
-                ),
-                timeout=timeout
-            )
-
-            out = stdout.decode('utf-8', errors='replace').strip()
-            err = stderr.decode('utf-8', errors='replace').strip()
-            if out_truncated:
-                out += "\n...(output truncated)"
-            if err_truncated:
-                err += "\n...(output truncated)"
-
-            return {
-                "success": returncode == 0,
-                "returncode": returncode,
-                "stdout": out,
-                "stderr": err,
-            }
-
-        except asyncio.TimeoutError:
-            if process is not None:
-                try:
-                    process.kill()
-                    await process.communicate()
-                except Exception:
-                    pass
-            return {
-                "success": False,
-                "returncode": -1,
-                "stdout": "",
-                "stderr": f"Command timed out after {timeout}s",
-            }
-
-        except FileNotFoundError as e:
-            # The docker binary itself is missing / not on PATH.
-            return {
-                "success": False,
-                "returncode": -1,
-                "stdout": "",
-                "stderr": f"Executable not found: {e}",
-                "error_type": "executable_not_found",
-            }
-
-        except Exception as e:
-            return {
-                "success": False,
-                "returncode": -1,
-                "stdout": "",
-                "stderr": str(e),
-            }
+        """Run a system command with a timeout to prevent hangs on docker socket
+        issues. The process lifecycle, timeout and output cap live in the shared
+        ``run_subprocess`` helper; this wrapper keeps the service's return shape.
+        """
+        result = await run_subprocess(command, timeout)
+        out = {
+            "success": result["success"],
+            "returncode": result["returncode"],
+            "stdout": result["stdout"],
+            "stderr": result["stderr"],
+        }
+        if result["status"] == "not_found":
+            # docker binary missing / not on PATH
+            out["stderr"] = f"Executable not found: {result.get('raw_error', '')}"
+            out["error_type"] = "executable_not_found"
+        elif result["status"] == "failed":
+            out["stderr"] = str(result.get("raw_error", ""))
+        return out
 
     async def discover_containers(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
         """Discover Exegol containers"""

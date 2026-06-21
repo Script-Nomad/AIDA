@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from utils.logger import get_logger
 from utils.log_context import set_assessment_id, set_container_name
+from utils.subprocess_runner import run_subprocess
 
 # Global structured logger
 logger = get_logger(__name__)
@@ -337,66 +338,54 @@ class AidaMCPService:
         pentesting tools via execute_container_command. Short docker management
         commands (inspect, ps) will complete well under that.
         """
-        try:
-            file_log.debug(f"Executing command: {' '.join(command)}")
+        file_log.debug(f"Executing command: {' '.join(command)}")
+        cmd_str = ' '.join(command)
+        result = await run_subprocess(command, timeout)
+        status = result["status"]
 
-            process = await asyncio.create_subprocess_exec(
-                *command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
-                timeout=timeout
-            )
-
+        if status == "ok":
             return {
-                "success": process.returncode == 0,
-                "returncode": process.returncode,
-                "stdout": stdout.decode('utf-8', errors='replace').strip(),
-                "stderr": stderr.decode('utf-8', errors='replace').strip(),
-                "command": ' '.join(command),
-                "error_type": self._classify_error(process.returncode, stderr.decode('utf-8', errors='replace'))
+                "success": result["success"],
+                "returncode": result["returncode"],
+                "stdout": result["stdout"],
+                "stderr": result["stderr"],
+                "command": cmd_str,
+                "error_type": self._classify_error(result["returncode"], result["stderr"]),
             }
 
-        except asyncio.TimeoutError:
-            try:
-                process.kill()
-                await process.communicate()
-            except Exception:
-                pass
-            file_log.warning(f"Command timed out after {timeout}s: {' '.join(command)}")
+        if status == "timeout":
+            file_log.warning(f"Command timed out after {timeout}s: {cmd_str}")
             return {
                 "success": False,
                 "returncode": -1,
                 "stdout": "",
                 "stderr": f"Command timed out after {timeout}s",
-                "command": ' '.join(command),
+                "command": cmd_str,
                 "error_type": "timeout",
-                "raw_error": f"Timed out after {timeout}s"
+                "raw_error": f"Timed out after {timeout}s",
             }
 
-        except FileNotFoundError as e:
+        if status == "not_found":
             return {
                 "success": False,
                 "returncode": -1,
                 "stdout": "",
                 "stderr": f"Command not found: {command[0]}",
-                "command": ' '.join(command),
+                "command": cmd_str,
                 "error_type": "command_not_found",
-                "raw_error": str(e)
+                "raw_error": result.get("raw_error", ""),
             }
-        except Exception as e:
-            return {
-                "success": False,
-                "returncode": -1,
-                "stdout": "",
-                "stderr": f"Execution failed: {str(e)}",
-                "command": ' '.join(command),
-                "error_type": "execution_failed",
-                "raw_error": str(e)
-            }
+
+        # status == "failed"
+        return {
+            "success": False,
+            "returncode": -1,
+            "stdout": "",
+            "stderr": f"Execution failed: {result.get('raw_error', '')}",
+            "command": cmd_str,
+            "error_type": "execution_failed",
+            "raw_error": result.get("raw_error", ""),
+        }
 
     def _classify_error(self, returncode: int, stderr: str) -> str:
         """Classify the type of error based on return code and stderr"""
