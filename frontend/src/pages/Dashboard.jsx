@@ -15,7 +15,7 @@ import {
 import CreateAssessmentModal from '../components/assessment/CreateAssessmentModal';
 import assessmentService from '../services/assessmentService';
 import apiClient from '../services/api';
-import { commandService } from '../services/commandService';
+import commandService from '../services/commandService';
 import toolStatsService from '../services/toolStatsService';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
 
