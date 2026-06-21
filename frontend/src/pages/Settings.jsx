@@ -25,6 +25,13 @@ import notificationService from '../services/notificationService';
 import { useTheme } from '../contexts/ThemeContext';
 import McpAccessSection from '../components/common/McpAccessSection';
 
+// Backend root for the API docs links, derived from the configured API base so
+// they work outside localhost. (Docs are only served when ENVIRONMENT != production.)
+const _apiBase = import.meta.env.VITE_API_URL || '/api';
+const DOCS_BASE_URL = /^https?:\/\//.test(_apiBase)
+  ? _apiBase.replace(/\/api\/?$/, '')
+  : window.location.origin;
+
 const Settings = () => {
   const { theme, toggleTheme, isDark, primaryColor, setPrimaryColor, colorThemes } = useTheme();
   const [activeTab, setActiveTab] = useState('general');
@@ -1701,7 +1708,7 @@ const Settings = () => {
                 </a>
 
                 <a
-                  href="http://localhost:8000/docs"
+                  href={`${DOCS_BASE_URL}/docs`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="p-3 flex items-center justify-between hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
@@ -1714,7 +1721,7 @@ const Settings = () => {
                 </a>
 
                 <a
-                  href="http://localhost:8000/redoc"
+                  href={`${DOCS_BASE_URL}/redoc`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="p-3 flex items-center justify-between hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
