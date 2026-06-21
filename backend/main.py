@@ -62,7 +62,8 @@ async def lifespan(app: FastAPI):
 # Disable the interactive API docs (Swagger UI, ReDoc and the OpenAPI schema)
 # outside of development so the full API surface is not exposed publicly when
 # the backend is reachable through the reverse proxy (e.g. ``--domain`` mode).
-_docs_enabled = settings.ENVIRONMENT != "production"
+# DEBUG=true can force them back on for troubleshooting a production build.
+_docs_enabled = settings.ENVIRONMENT != "production" or settings.DEBUG
 
 # Create FastAPI app
 app = FastAPI(
