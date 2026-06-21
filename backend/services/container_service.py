@@ -392,15 +392,17 @@ class ContainerService:
         # Nothing running — return configured and let validation produce a clear error
         return configured
 
-    async def execute_and_log_command(
-        self,
-        assessment_id: int,
-        command: str,
-        phase: Optional[str],
-        db: AsyncSession,
-        timeout: Optional[int] = None
-    ) -> CommandHistory:
-        """Execute command with timeout and log it to database (async optimized)"""
+    async def _prepare_execution_context(self, assessment_id: int, db: AsyncSession,
+                                         timeout: Optional[int] = None):
+        """Resolve the (timeout, working_directory, assessment) for an
+        execute_and_log_* call.
+
+        Shared by execute_and_log_command / _python / _http_request, which all
+        previously inlined this identical block: resolve the timeout from
+        platform settings (falling back to the config default), resolve the
+        active container, then load the assessment and create/repair its
+        workspace directory inside that container.
+        """
         # Get timeout from database settings, or fall back to config default
         if timeout is None:
             stmt = select(PlatformSettings).filter(
@@ -408,13 +410,9 @@ class ContainerService:
             )
             result = await db.execute(stmt)
             timeout_setting = result.scalar_one_or_none()
-
-            if timeout_setting:
-                try:
-                    timeout = int(timeout_setting.value)
-                except ValueError:
-                    timeout = settings.COMMAND_TIMEOUT
-            else:
+            try:
+                timeout = int(timeout_setting.value) if timeout_setting else settings.COMMAND_TIMEOUT
+            except ValueError:
                 timeout = settings.COMMAND_TIMEOUT
 
         self.current_container = await self._resolve_active_container(db)
@@ -447,7 +445,6 @@ class ContainerService:
                 # Refresh the assessment object with new values
                 await db.refresh(assessment)
                 assessment.workspace_path = workspace_result["workspace_path"]
-                assessment.container_name = workspace_result["container_name"]
             else:
                 # Workspace path exists in DB, but ensure it exists in current container
                 # This handles cases where container_name setting changed after workspace creation
@@ -463,7 +460,6 @@ class ContainerService:
                         container=self.current_container,
                         assessment_id=assessment_id
                     )
-                    # Extract assessment name from path or use existing workspace_path
                     subdirs = ['recon', 'exploits', 'loot', 'notes', 'scripts', 'context']
                     subdir_paths = [f"{assessment.workspace_path}/{subdir}" for subdir in subdirs]
                     all_paths = [assessment.workspace_path] + subdir_paths
@@ -474,6 +470,21 @@ class ContainerService:
                     ])
 
             working_directory = assessment.workspace_path
+
+        return timeout, working_directory, assessment
+
+    async def execute_and_log_command(
+        self,
+        assessment_id: int,
+        command: str,
+        phase: Optional[str],
+        db: AsyncSession,
+        timeout: Optional[int] = None
+    ) -> CommandHistory:
+        """Execute command with timeout and log it to database (async optimized)"""
+        timeout, working_directory, assessment = await self._prepare_execution_context(
+            assessment_id, db, timeout
+        )
 
         # Create command log entry BEFORE execution (status: running)
         command_log = CommandHistory(
@@ -679,58 +690,9 @@ class ContainerService:
         Returns:
             CommandHistory instance with execution results
         """
-        # --- Resolve timeout from DB settings ---
-        if timeout is None:
-            stmt = select(PlatformSettings).filter(
-                PlatformSettings.key == "command_timeout"
-            )
-            result = await db.execute(stmt)
-            timeout_setting = result.scalar_one_or_none()
-            try:
-                timeout = int(timeout_setting.value) if timeout_setting else settings.COMMAND_TIMEOUT
-            except ValueError:
-                timeout = settings.COMMAND_TIMEOUT
-
-        self.current_container = await self._resolve_active_container(db)
-
-        # --- Resolve workspace path from assessment ---
-        stmt = select(Assessment).filter(Assessment.id == assessment_id)
-        result = await db.execute(stmt)
-        assessment = result.scalar_one_or_none()
-
-        working_directory = None
-        if assessment:
-            if not assessment.workspace_path:
-                workspace_result = await self.create_workspace(
-                    assessment_name=assessment.name,
-                    db=None
-                )
-                stmt = (
-                    update(Assessment)
-                    .where(Assessment.id == assessment_id)
-                    .values(
-                        workspace_path=workspace_result["workspace_path"],
-                        container_name=workspace_result["container_name"]
-                    )
-                )
-                await db.execute(stmt)
-                await db.commit()
-                await db.refresh(assessment)
-                assessment.workspace_path = workspace_result["workspace_path"]
-            else:
-                workspace_check = await self._run_command([
-                    "docker", "exec", self.current_container, "test", "-d", assessment.workspace_path
-                ])
-                if workspace_check["returncode"] != 0:
-                    subdirs = ['recon', 'exploits', 'loot', 'notes', 'scripts', 'context']
-                    subdir_paths = [f"{assessment.workspace_path}/{subdir}" for subdir in subdirs]
-                    all_paths = [assessment.workspace_path] + subdir_paths
-                    mkdir_command = f"mkdir -p {' '.join(shlex.quote(p) for p in all_paths)}"
-                    await self._run_command([
-                        "docker", "exec", self.current_container, "bash", "-c", mkdir_command
-                    ])
-
-            working_directory = assessment.workspace_path
+        timeout, working_directory, assessment = await self._prepare_execution_context(
+            assessment_id, db, timeout
+        )
 
         # --- Create log entry (status: running) ---
         command_log = CommandHistory(
@@ -952,58 +914,9 @@ except Exception as _e:
         Returns:
             CommandHistory instance with execution results
         """
-        # --- Resolve timeout ---
-        if timeout is None:
-            stmt = select(PlatformSettings).filter(
-                PlatformSettings.key == "command_timeout"
-            )
-            result = await db.execute(stmt)
-            timeout_setting = result.scalar_one_or_none()
-            try:
-                timeout = int(timeout_setting.value) if timeout_setting else settings.COMMAND_TIMEOUT
-            except ValueError:
-                timeout = settings.COMMAND_TIMEOUT
-
-        self.current_container = await self._resolve_active_container(db)
-
-        # --- Resolve workspace path ---
-        stmt = select(Assessment).filter(Assessment.id == assessment_id)
-        result = await db.execute(stmt)
-        assessment = result.scalar_one_or_none()
-
-        working_directory = None
-        if assessment:
-            if not assessment.workspace_path:
-                workspace_result = await self.create_workspace(
-                    assessment_name=assessment.name,
-                    db=None
-                )
-                stmt = (
-                    update(Assessment)
-                    .where(Assessment.id == assessment_id)
-                    .values(
-                        workspace_path=workspace_result["workspace_path"],
-                        container_name=workspace_result["container_name"]
-                    )
-                )
-                await db.execute(stmt)
-                await db.commit()
-                await db.refresh(assessment)
-                assessment.workspace_path = workspace_result["workspace_path"]
-            else:
-                workspace_check = await self._run_command([
-                    "docker", "exec", self.current_container, "test", "-d", assessment.workspace_path
-                ])
-                if workspace_check["returncode"] != 0:
-                    subdirs = ['recon', 'exploits', 'loot', 'notes', 'scripts', 'context']
-                    subdir_paths = [f"{assessment.workspace_path}/{subdir}" for subdir in subdirs]
-                    all_paths = [assessment.workspace_path] + subdir_paths
-                    mkdir_command = f"mkdir -p {' '.join(shlex.quote(p) for p in all_paths)}"
-                    await self._run_command([
-                        "docker", "exec", self.current_container, "bash", "-c", mkdir_command
-                    ])
-
-            working_directory = assessment.workspace_path
+        timeout, working_directory, assessment = await self._prepare_execution_context(
+            assessment_id, db, timeout
+        )
 
         # --- Generate Python script ---
         code = self._generate_http_python_script(params)
