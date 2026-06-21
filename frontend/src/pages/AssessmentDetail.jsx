@@ -557,12 +557,8 @@ const AssessmentDetail = () => {
                         setLaunchingAI(true);
                         setLaunchResult(null);
                         try {
-                          const resp = await fetch('http://localhost:9876/launch', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ assessment_name: assessment.name }),
-                          });
-                          const data = await resp.json();
+                          const { launchAidaOnHost } = await import('../services/hostHelperService');
+                          const data = await launchAidaOnHost(assessment.name);
                           setLaunchResult(data.success ? { type: 'success', text: 'Terminal opened with AI scan!' } : { type: 'error', text: data.error || 'Failed to launch' });
                         } catch (e) {
                           setLaunchResult({ type: 'error', text: 'Host helper not running. Use the command below instead.' });
