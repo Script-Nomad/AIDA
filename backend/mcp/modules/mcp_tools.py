@@ -270,6 +270,83 @@ def get_tool_definitions() -> List[Tool]:
             }
         ),
 
+        # ========== OWASP ASVS Grid (3 tools) ==========
+        # Only present/seeded for ASVS-methodology assessments. The grid is the
+        # work surface: walk each requirement, record a verdict + analysis.
+        Tool(
+            name="list_asvs_requirements",
+            description="List OWASP ASVS requirements for the loaded ASVS assessment (the verification grid). Use this to read your checklist on demand. Filter by status to find remaining work (e.g. status='NOT_TESTED'), or by chapter (e.g. 'V6') / level.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": ["NOT_TESTED", "PASS", "FAIL", "NA"],
+                        "description": "Filter by verdict status (optional)"
+                    },
+                    "chapter": {
+                        "type": "string",
+                        "description": "Filter by ASVS chapter id, e.g. 'V1', 'V6' (optional)"
+                    },
+                    "level": {
+                        "type": "integer",
+                        "enum": [1, 2, 3],
+                        "description": "Filter by ASVS level (optional)"
+                    }
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="get_asvs_summary",
+            description="Get the ASVS coverage summary for the loaded assessment: total requirements, how many are tested, per-status counts (NOT_TESTED/PASS/FAIL/NA), and per-chapter breakdown. Use it to track what remains and decide when the engagement is complete (NOT_TESTED == 0).",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="update_asvs_requirement",
+            description="Record a verdict for one ASVS requirement after testing it. status=PASS (verified compliant), FAIL (vulnerable/non-compliant), NA (not applicable — explain why in analysis), NOT_TESTED (reset). On FAIL, provide cvss_vector (or severity) so it surfaces as a finding in the report. Always include your analysis (what you saw) and the command you ran.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "req_id": {
+                        "type": "string",
+                        "description": "ASVS requirement id, e.g. 'V1.2.4'"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["NOT_TESTED", "PASS", "FAIL", "NA"],
+                        "description": "Verdict for this requirement"
+                    },
+                    "analysis": {
+                        "type": "string",
+                        "description": "What you observed / your reasoning (the 'what the AI saw'). For NA, explain why it does not apply."
+                    },
+                    "command_used": {
+                        "type": "string",
+                        "description": "The command(s) you actually ran to verify this requirement"
+                    },
+                    "evidence": {
+                        "type": "string",
+                        "description": "Raw output / proof supporting the verdict (optional)"
+                    },
+                    "cvss_vector": {
+                        "type": "string",
+                        "description": "CVSS 4.0 vector for a FAIL. Severity is auto-derived. Example: CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"
+                    },
+                    "severity": {
+                        "type": "string",
+                        "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"],
+                        "description": "Severity for a FAIL when CVSS cannot be assessed. Prefer cvss_vector."
+                    }
+                },
+                "required": ["req_id"]
+            }
+        ),
+
         # ========== Reconnaissance Management (2 tools) ==========
         Tool(
             name="add_recon_data",

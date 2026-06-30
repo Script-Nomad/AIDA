@@ -15,6 +15,7 @@ import SendReportModal from '../components/assessment/SendReportModal';
 
 import ChangeContainerModal from '../components/workspace/ChangeContainerModal';
 import MethodologyReport from '../components/assessment/MethodologyReport';
+import AsvsGrid from '../components/assessment/AsvsGrid';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { getSeverityBarClass, SEVERITY_ORDER } from '../utils/severity';
 
@@ -132,16 +133,17 @@ const AssessmentDetail = () => {
       setReconData(prev => prev.filter(recon => recon.id !== data.recon_id));
     });
 
-    // Command events
-    const unsubscribeCommandCompleted = subscribe('command_completed', (data) => {
-
-      setCommands(prev => [data.command, ...prev]);
-    });
-
-    const unsubscribeCommandFailed = subscribe('command_failed', (data) => {
-
-      setCommands(prev => [data.command, ...prev]);
-    });
+    // Command events — de-dupe by id so a command delivered twice (e.g. a WS
+    // event plus a reload) doesn't create duplicate rows / React keys.
+    const prependCommand = (data) => {
+      setCommands(prev => {
+        const cmd = data?.command;
+        if (!cmd || prev.some(c => c.id === cmd.id)) return prev;
+        return [cmd, ...prev];
+      });
+    };
+    const unsubscribeCommandCompleted = subscribe('command_completed', prependCommand);
+    const unsubscribeCommandFailed = subscribe('command_failed', prependCommand);
 
     // Assessment events
     const unsubscribeAssessmentUpdated = subscribe('assessment_updated', (data) => {
@@ -555,12 +557,8 @@ const AssessmentDetail = () => {
                         setLaunchingAI(true);
                         setLaunchResult(null);
                         try {
-                          const resp = await fetch('http://localhost:9876/launch', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ assessment_name: assessment.name }),
-                          });
-                          const data = await resp.json();
+                          const { launchAidaOnHost } = await import('../services/hostHelperService');
+                          const data = await launchAidaOnHost(assessment.name);
                           setLaunchResult(data.success ? { type: 'success', text: 'Terminal opened with AI scan!' } : { type: 'error', text: data.error || 'Failed to launch' });
                         } catch (e) {
                           setLaunchResult({ type: 'error', text: 'Host helper not running. Use the command below instead.' });
@@ -985,6 +983,13 @@ const AssessmentDetail = () => {
           )}
         </div>
       </div>
+
+      {/* OWASP ASVS verification grid (ASVS-methodology assessments only) */}
+      {assessment?.methodology === 'asvs' && (
+        <div className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg p-4">
+          <AsvsGrid assessmentId={parseInt(id)} />
+        </div>
+      )}
 
       {/* Methodology Report */}
       <MethodologyReport assessmentId={parseInt(id)} />

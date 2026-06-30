@@ -2,39 +2,77 @@
 MCP Tool Handlers - Refactored handlers for all MCP tools
 Handles: load_assessment, add_*, list_*, update_*, execute, pentesting tools
 """
-from typing import List, Optional, Tuple
+import asyncio
+import json
+import time
+from typing import List, Optional
 from mcp.types import TextContent
 from scan_parsers import parse_scan_output
+# CVSS 4.0 derivation lives in utils.cvss (shared with the ASVS requirements API).
+from utils.cvss import calculate_cvss4_score as _calculate_cvss4_score, score_to_severity as _score_to_severity
 
 
-def _calculate_cvss4_score(vector: str) -> Tuple[Optional[float], Optional[str]]:
+async def _await_command_approval(mcp_service, *, command, phase, matched_keywords,
+                                  timeout_seconds, command_type=None):
+    """Create a pending command and block until it is resolved.
+
+    Shared by the execute / python_exec / http_request handlers. Returns a
+    ``(status, payload)`` tuple where ``status`` is one of ``"approved"``,
+    ``"rejected"``, ``"timeout"`` or ``"error"``. ``payload`` is the
+    execution-result dict when approved, the error message when ``"error"``,
+    and ``None`` otherwise.
     """
-    Calculate CVSS 4.0 score and severity from a vector string.
-    Returns (score, severity) or (None, None) on error.
-    Uses the cvss library if available, otherwise falls back to None.
-    """
+    create_payload = {
+        "assessment_id": mcp_service.current_assessment_id,
+        "command": command,
+        "phase": phase,
+        "matched_keywords": matched_keywords,
+    }
+    if command_type:
+        create_payload["command_type"] = command_type
+
     try:
-        from cvss import CVSS4
-        c = CVSS4(vector)
-        score = float(c.base_score)
-        severity = _score_to_severity(score)
-        return score, severity
-    except Exception:
-        pass
-    return None, None
+        pending_response = await mcp_service.http_client.post(
+            f"{mcp_service.backend_url}/pending-commands/create",
+            json=create_payload,
+        )
+        pending_response.raise_for_status()
+        pending_id = pending_response.json().get("id")
+    except Exception as e:
+        return ("error", str(e))
 
+    if not pending_id:
+        return ("error", "invalid approval request")
 
-def _score_to_severity(score: float) -> str:
-    """Map CVSS 4.0 numeric score to severity label (FIRST standard thresholds)."""
-    if score >= 9.0:
-        return "CRITICAL"
-    elif score >= 7.0:
-        return "HIGH"
-    elif score >= 4.0:
-        return "MEDIUM"
-    elif score > 0.0:
-        return "LOW"
-    return "INFO"
+    poll_interval = 2
+    max_consecutive_failures = 5
+    consecutive_failures = 0
+    # Use a wall-clock deadline so the wait does not drift with request latency.
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        await asyncio.sleep(poll_interval)
+        try:
+            status_response = await mcp_service.http_client.get(
+                f"{mcp_service.backend_url}/pending-commands/{pending_id}"
+            )
+            if status_response.status_code == 200:
+                consecutive_failures = 0
+                pending_data = status_response.json()
+                current_status = pending_data.get("status", "pending")
+                if current_status == "executed":
+                    return ("approved", pending_data.get("execution_result", {}))
+                if current_status in ("rejected", "timeout"):
+                    return (current_status, None)
+            else:
+                consecutive_failures += 1
+        except Exception:
+            consecutive_failures += 1
+        # If the backend is unreachable for several polls in a row, stop waiting
+        # instead of silently spinning until the full timeout elapses.
+        if consecutive_failures >= max_consecutive_failures:
+            return ("error", "backend unreachable while waiting for approval")
+
+    return ("timeout", None)
 
 
 async def handle_tool_call(name: str, arguments: dict, mcp_service) -> List[TextContent]:
@@ -66,6 +104,17 @@ async def handle_tool_call(name: str, arguments: dict, mcp_service) -> List[Text
 
         elif name == "delete_card":
             return await _handle_delete_card(arguments, mcp_service)
+
+        # ========== OWASP ASVS Grid ==========
+
+        elif name == "list_asvs_requirements":
+            return await _handle_list_asvs_requirements(arguments, mcp_service)
+
+        elif name == "get_asvs_summary":
+            return await _handle_get_asvs_summary(arguments, mcp_service)
+
+        elif name == "update_asvs_requirement":
+            return await _handle_update_asvs_requirement(arguments, mcp_service)
 
         # ========== Reconnaissance Management ==========
 
@@ -202,6 +251,31 @@ async def _handle_load_assessment(arguments: dict, mcp_service) -> List[TextCont
             log.warning(f"Failed to generate workspace tree: {e}")
     
 
+
+    # ASVS coverage (only for ASVS-methodology assessments). The full grid is
+    # NOT dumped here — the agent queries it on demand via list_asvs_requirements.
+    if assessment_data.get('methodology') == 'asvs':
+        try:
+            summary = await mcp_service.get_asvs_summary(assessment["id"])
+            bs = summary.get('by_status', {})
+            response += "## OWASP ASVS Methodology\n"
+            response += (
+                f"This is an **OWASP ASVS v{summary.get('asvs_version', '5.0.0')}** engagement "
+                f"(target level L{summary.get('asvs_level', '?')}).\n"
+            )
+            response += (
+                f"**Coverage:** {summary.get('tested', 0)}/{summary.get('total', 0)} tested "
+                f"({summary.get('coverage_pct', 0)}%) — PASS {bs.get('PASS', 0)} · "
+                f"FAIL {bs.get('FAIL', 0)} · N/A {bs.get('NA', 0)} · NOT_TESTED {bs.get('NOT_TESTED', 0)}.\n"
+            )
+            response += (
+                "Walk the grid with `list_asvs_requirements(status=\"NOT_TESTED\")`, record each verdict "
+                "with `update_asvs_requirement(...)`, and track progress with `get_asvs_summary()`. "
+                "Finish only when NOT_TESTED == 0.\n\n"
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger("aida-mcp").warning(f"Failed to load ASVS summary: {e}")
 
     # Add sections information
     sections = full_data.get('sections', [])
@@ -721,6 +795,104 @@ async def _handle_delete_card(arguments: dict, mcp_service) -> List[TextContent]
     )]
 
 
+# ========== OWASP ASVS Grid Handlers ==========
+
+async def _handle_list_asvs_requirements(arguments: dict, mcp_service) -> List[TextContent]:
+    """Handle list_asvs_requirements - read the ASVS grid on demand."""
+    if not mcp_service.current_assessment_id:
+        return [TextContent(type="text", text="No assessment loaded. Use 'load_assessment' first.")]
+
+    reqs = await mcp_service.list_asvs_requirements(
+        assessment_id=mcp_service.current_assessment_id,
+        status=arguments.get("status"),
+        chapter=arguments.get("chapter"),
+        level=arguments.get("level"),
+    )
+
+    if not reqs:
+        return [TextContent(type="text", text="No ASVS requirements match the given filters (is this an ASVS assessment?).")]
+
+    response = f"**ASVS requirements ({len(reqs)}):**\n\n"
+    current_section = None
+    for r in reqs:
+        section_key = f"{r.get('section_id')} {r.get('section_name')}"
+        if section_key != current_section:
+            current_section = section_key
+            response += f"\n### {section_key}\n"
+        line = f"- **{r.get('req_id')}** [L{r.get('level')}] [{r.get('status', 'NOT_TESTED')}] {r.get('description', '')}"
+        if r.get("test_type"):
+            line += f" _(test: {r['test_type']})_"
+        response += line + "\n"
+        if r.get("guidance"):
+            response += f"    - Suggested method: {r['guidance']}\n"
+        if r.get("suggested_command"):
+            response += f"    - Suggested command: `{r['suggested_command']}`\n"
+        if r.get("analysis"):
+            response += f"    - Analysis: {r['analysis']}\n"
+
+    return [TextContent(type="text", text=response)]
+
+
+async def _handle_get_asvs_summary(arguments: dict, mcp_service) -> List[TextContent]:
+    """Handle get_asvs_summary - coverage stats for the ASVS grid."""
+    if not mcp_service.current_assessment_id:
+        return [TextContent(type="text", text="No assessment loaded. Use 'load_assessment' first.")]
+
+    summary = await mcp_service.get_asvs_summary(mcp_service.current_assessment_id)
+    bs = summary.get("by_status", {})
+
+    response = (
+        f"**ASVS coverage** (v{summary.get('asvs_version', '?')}, "
+        f"target L{summary.get('asvs_level', '?')}):\n"
+        f"- Total: {summary.get('total', 0)}  |  Tested: {summary.get('tested', 0)} "
+        f"({summary.get('coverage_pct', 0)}%)\n"
+        f"- PASS {bs.get('PASS', 0)} · FAIL {bs.get('FAIL', 0)} · "
+        f"N/A {bs.get('NA', 0)} · NOT_TESTED {bs.get('NOT_TESTED', 0)}\n\n"
+        f"**Per chapter:**\n"
+    )
+    for ch in summary.get("by_chapter", []):
+        cbs = ch.get("by_status", {})
+        response += (
+            f"- {ch.get('chapter_id')} {ch.get('chapter_name')}: "
+            f"{ch.get('tested', 0)}/{ch.get('total', 0)} tested "
+            f"(FAIL {cbs.get('FAIL', 0)}, NOT_TESTED {cbs.get('NOT_TESTED', 0)})\n"
+        )
+    return [TextContent(type="text", text=response)]
+
+
+async def _handle_update_asvs_requirement(arguments: dict, mcp_service) -> List[TextContent]:
+    """Handle update_asvs_requirement - record a verdict for one requirement."""
+    if not mcp_service.current_assessment_id:
+        return [TextContent(type="text", text="No assessment loaded. Use 'load_assessment' first.")]
+
+    req_id = arguments["req_id"]
+
+    payload = {}
+    for field in ("status", "analysis", "command_used", "evidence", "severity"):
+        if arguments.get(field) is not None:
+            payload[field] = arguments[field]
+
+    # CVSS 4.0 vector → score/severity derived server-side (same as cards)
+    cvss_vector = arguments.get("cvss_vector")
+    if cvss_vector:
+        payload["cvss_vector"] = cvss_vector
+
+    result = await mcp_service.update_asvs_requirement(
+        assessment_id=mcp_service.current_assessment_id,
+        req_id=req_id,
+        **payload,
+    )
+
+    status_label = result.get("status", "?")
+    extra = ""
+    if result.get("cvss_score") is not None:
+        extra = f" — CVSS {result['cvss_score']} ({result.get('severity', 'N/A')})"
+    return [TextContent(
+        type="text",
+        text=f"ASVS {req_id} → {status_label}{extra}"
+    )]
+
+
 # ========== Reconnaissance Management Handlers ==========
 
 async def _handle_add_recon_data(arguments: dict, mcp_service) -> List[TextContent]:
@@ -862,108 +1034,33 @@ async def _handle_execute(arguments: dict, mcp_service) -> List[TextContent]:
 
     # ========== STEP 3: APPROVAL FLOW WITH BLOCKING WAIT ==========
     if requires_approval:
-        import asyncio
-        
-        # Get timeout from settings (default 5 minutes)
-        timeout_seconds = 300
-        try:
-            timeout_response = await mcp_service.http_client.get(
-                f"{mcp_service.backend_url}/command-settings"
-            )
-            if timeout_response.status_code == 200:
-                timeout_seconds = timeout_response.json().get("timeout_seconds", 300)
-        except:
-            pass
-        
-        poll_interval = 2  # Poll every 2 seconds
-        pending_id = None
-        
-        # Create pending command
-        try:
-            pending_response = await mcp_service.http_client.post(
-                f"{mcp_service.backend_url}/pending-commands/create",
-                json={
-                    "assessment_id": mcp_service.current_assessment_id,
-                    "command": command,
-                    "phase": phase,
-                    "matched_keywords": matched_keywords
-                }
-            )
-            pending_response.raise_for_status()
-            pending_cmd = pending_response.json()
-            pending_id = pending_cmd.get("id")
-            
-        except Exception as e:
-            # If we can't create pending command, reject by default for safety
+        timeout_seconds = settings.get("timeout_seconds", 300)
+        status_result, payload = await _await_command_approval(
+            mcp_service,
+            command=command,
+            phase=phase,
+            matched_keywords=matched_keywords,
+            timeout_seconds=timeout_seconds,
+        )
+
+        if status_result == "error":
+            # If we can't create the approval request, reject by default for safety
             return [TextContent(
                 type="text",
                 text=f"**❌ Command blocked - failed to create approval request**\n\n"
                      f"**Command:** `{command}`\n"
-                     f"**Error:** {str(e)}\n\n"
+                     f"**Error:** {payload}\n\n"
                      f"The command was NOT executed for safety reasons."
             )]
-        
-        if not pending_id:
-            return [TextContent(
-                type="text",
-                text=f"**❌ Command blocked - invalid approval request**\n\n"
-                     f"**Command:** `{command}`\n\n"
-                     f"The command was NOT executed for safety reasons."
-            )]
-        
-        # Waiting for approval
-        mode_label = "Closed mode" if execution_mode == "closed" else f"Filter (keywords: {', '.join(matched_keywords)})"
-        
-        # ========== POLL AND WAIT FOR APPROVAL ==========
-        elapsed = 0
-        final_status = "timeout"
-        execution_result = None
-        
-        while elapsed < timeout_seconds:
-            await asyncio.sleep(poll_interval)
-            elapsed += poll_interval
-            
-            try:
-                # Check status of pending command
-                status_response = await mcp_service.http_client.get(
-                    f"{mcp_service.backend_url}/pending-commands/{pending_id}"
-                )
-                
-                if status_response.status_code == 200:
-                    pending_data = status_response.json()
-                    current_status = pending_data.get("status", "pending")
-                    
-                    if current_status == "executed":
-                        # User approved and command was executed
-                        final_status = "approved"
-                        execution_result = pending_data.get("execution_result", {})
-                        break
-                    
-                    elif current_status == "rejected":
-                        # User rejected
-                        final_status = "rejected"
-                        break
-                    
-                    elif current_status == "timeout":
-                        # Already timed out by backend
-                        final_status = "timeout"
-                        break
-                    
-                    # Still pending - continue polling
-                    
-            except Exception as e:
-                # Continue polling on error
-                pass
-        
-        # ========== RETURN RESULT BASED ON FINAL STATUS ==========
-        if final_status == "approved" and execution_result:
-            # Command was approved and executed - return output like normal execution
+
+        if status_result == "approved" and payload:
+            execution_result = payload
             stdout = execution_result.get("stdout", "")
             stderr = execution_result.get("stderr", "")
             success = execution_result.get("success", False)
-            
+
             max_length = await mcp_service.get_output_max_length()
-            
+
             if success:
                 if stdout:
                     response_text = f"```\n{stdout[:max_length]}\n```\n"
@@ -973,20 +1070,17 @@ async def _handle_execute(arguments: dict, mcp_service) -> List[TextContent]:
                 response_text = f"Command failed (exit code {execution_result.get('returncode', 'unknown')})\n"
                 if stderr:
                     response_text += f"```\n{stderr[:500]}\n```\n"
-            
+
             return [TextContent(type="text", text=response_text)]
-        
-        elif final_status == "rejected":
-            return [TextContent(
-                type="text",
-                text="Command rejected by user"
-            )]
-        
-        else:  # timeout
-            return [TextContent(
-                type="text",
-                text=f"Command approval timed out after {timeout_seconds}s. The command was NOT executed."
-            )]
+
+        if status_result == "rejected":
+            return [TextContent(type="text", text="Command rejected by user")]
+
+        # timeout (or approved without a result)
+        return [TextContent(
+            type="text",
+            text=f"Command approval timed out after {timeout_seconds}s. The command was NOT executed."
+        )]
 
     # ========== STEP 4: EXECUTE IMMEDIATELY (OPEN MODE OR NO KEYWORD MATCH) ==========
     try:
@@ -1044,7 +1138,6 @@ async def _handle_execute(arguments: dict, mcp_service) -> List[TextContent]:
             response_text += f"ERROR: {stderr[:500]}\n"
         else:
             response_text += f"ERROR: Command failed with exit code {result.get('returncode', 'unknown')}\n"
-            response_text += f"DEBUG: success={result.get('success')}, stdout={repr(result.get('stdout'))}, stderr={repr(result.get('stderr'))}, status={result.get('status')}\n"
 
     return [TextContent(type="text", text=response_text)]
 
@@ -1093,73 +1186,24 @@ async def _handle_python_exec(arguments: dict, mcp_service) -> List[TextContent]
 
     # ========== APPROVAL FLOW ==========
     if requires_approval:
-        import asyncio
+        timeout_seconds = cmd_settings.get("timeout_seconds", 300)
+        status_result, payload = await _await_command_approval(
+            mcp_service,
+            command=code,
+            phase=phase,
+            matched_keywords=matched_keywords,
+            timeout_seconds=timeout_seconds,
+            command_type="python",
+        )
 
-        timeout_seconds = 300
-        try:
-            timeout_response = await mcp_service.http_client.get(
-                f"{mcp_service.backend_url}/command-settings"
-            )
-            if timeout_response.status_code == 200:
-                timeout_seconds = timeout_response.json().get("timeout_seconds", 300)
-        except Exception:
-            pass
-
-        poll_interval = 2
-        pending_id = None
-
-        try:
-            pending_response = await mcp_service.http_client.post(
-                f"{mcp_service.backend_url}/pending-commands/create",
-                json={
-                    "assessment_id": mcp_service.current_assessment_id,
-                    "command": code,           # Store full Python code as command
-                    "command_type": "python",  # Mark as python for approve routing
-                    "phase": phase,
-                    "matched_keywords": matched_keywords
-                }
-            )
-            pending_response.raise_for_status()
-            pending_cmd = pending_response.json()
-            pending_id = pending_cmd.get("id")
-        except Exception as e:
+        if status_result == "error":
             return [TextContent(
                 type="text",
-                text=f"**❌ python_exec blocked — failed to create approval request**\n\n**Error:** {str(e)}\n\nCode was NOT executed."
+                text=f"**❌ python_exec blocked — failed to create approval request**\n\n**Error:** {payload}\n\nCode was NOT executed."
             )]
 
-        if not pending_id:
-            return [TextContent(
-                type="text",
-                text="**❌ python_exec blocked — invalid approval request**\n\nCode was NOT executed."
-            )]
-
-        # Poll for approval
-        elapsed = 0
-        final_status = "timeout"
-        execution_result = None
-
-        while elapsed < timeout_seconds:
-            await asyncio.sleep(poll_interval)
-            elapsed += poll_interval
-            try:
-                status_response = await mcp_service.http_client.get(
-                    f"{mcp_service.backend_url}/pending-commands/{pending_id}"
-                )
-                if status_response.status_code == 200:
-                    pending_data = status_response.json()
-                    current_status = pending_data.get("status", "pending")
-                    if current_status == "executed":
-                        final_status = "approved"
-                        execution_result = pending_data.get("execution_result", {})
-                        break
-                    elif current_status in ("rejected", "timeout"):
-                        final_status = current_status
-                        break
-            except Exception:
-                pass
-
-        if final_status == "approved" and execution_result:
+        if status_result == "approved" and payload:
+            execution_result = payload
             max_length = await mcp_service.get_python_exec_output_max_length()
             stdout = execution_result.get("stdout", "")
             stderr = execution_result.get("stderr", "")
@@ -1171,10 +1215,11 @@ async def _handle_python_exec(arguments: dict, mcp_service) -> List[TextContent]
                 if stderr:
                     response_text += f"```\n{stderr[:500]}\n```\n"
                 return [TextContent(type="text", text=response_text)]
-        elif final_status == "rejected":
+
+        if status_result == "rejected":
             return [TextContent(type="text", text="python_exec rejected by user.")]
-        else:
-            return [TextContent(type="text", text=f"python_exec approval timed out after {timeout_seconds}s. Code was NOT executed.")]
+
+        return [TextContent(type="text", text=f"python_exec approval timed out after {timeout_seconds}s. Code was NOT executed.")]
 
     # ========== EXECUTE IMMEDIATELY (OPEN MODE) ==========
     try:
@@ -1224,8 +1269,6 @@ async def _handle_python_exec(arguments: dict, mcp_service) -> List[TextContent]
 
 async def _handle_http_request(arguments: dict, mcp_service) -> List[TextContent]:
     """Handle http_request — structured HTTP requests from Exegol without curl escaping."""
-    import json as _json
-
     url = arguments.get("url", "")
     method = arguments.get("method", "GET").upper()
     phase = arguments.get("phase")
@@ -1297,73 +1340,24 @@ async def _handle_http_request(arguments: dict, mcp_service) -> List[TextContent
 
     # ========== APPROVAL FLOW ==========
     if requires_approval:
-        import asyncio
+        timeout_seconds = cmd_settings.get("timeout_seconds", 300)
+        status_result, payload = await _await_command_approval(
+            mcp_service,
+            command=json.dumps(http_payload),  # JSON-serialized params
+            phase=phase,
+            matched_keywords=matched_keywords,
+            timeout_seconds=timeout_seconds,
+            command_type="http",
+        )
 
-        timeout_seconds = 300
-        try:
-            timeout_response = await mcp_service.http_client.get(
-                f"{mcp_service.backend_url}/command-settings"
-            )
-            if timeout_response.status_code == 200:
-                timeout_seconds = timeout_response.json().get("timeout_seconds", 300)
-        except Exception:
-            pass
-
-        poll_interval = 2
-        pending_id = None
-
-        try:
-            pending_response = await mcp_service.http_client.post(
-                f"{mcp_service.backend_url}/pending-commands/create",
-                json={
-                    "assessment_id": mcp_service.current_assessment_id,
-                    "command": _json.dumps(http_payload),  # JSON-serialized params
-                    "command_type": "http",
-                    "phase": phase,
-                    "matched_keywords": matched_keywords
-                }
-            )
-            pending_response.raise_for_status()
-            pending_cmd = pending_response.json()
-            pending_id = pending_cmd.get("id")
-        except Exception as e:
+        if status_result == "error":
             return [TextContent(
                 type="text",
-                text=f"**❌ http_request blocked — failed to create approval request**\n\n**Error:** {str(e)}\n\nRequest was NOT sent."
+                text=f"**❌ http_request blocked — failed to create approval request**\n\n**Error:** {payload}\n\nRequest was NOT sent."
             )]
 
-        if not pending_id:
-            return [TextContent(
-                type="text",
-                text="**❌ http_request blocked — invalid approval request**\n\nRequest was NOT sent."
-            )]
-
-        # Poll for approval
-        elapsed = 0
-        final_status = "timeout"
-        execution_result = None
-
-        while elapsed < timeout_seconds:
-            await asyncio.sleep(poll_interval)
-            elapsed += poll_interval
-            try:
-                status_response = await mcp_service.http_client.get(
-                    f"{mcp_service.backend_url}/pending-commands/{pending_id}"
-                )
-                if status_response.status_code == 200:
-                    pending_data = status_response.json()
-                    current_status = pending_data.get("status", "pending")
-                    if current_status == "executed":
-                        final_status = "approved"
-                        execution_result = pending_data.get("execution_result", {})
-                        break
-                    elif current_status in ("rejected", "timeout"):
-                        final_status = current_status
-                        break
-            except Exception:
-                pass
-
-        if final_status == "approved" and execution_result:
+        if status_result == "approved" and payload:
+            execution_result = payload
             max_length = await mcp_service.get_http_request_output_max_length()
             stdout = execution_result.get("stdout", "")
             stderr = execution_result.get("stderr", "")
@@ -1375,10 +1369,11 @@ async def _handle_http_request(arguments: dict, mcp_service) -> List[TextContent
                 if stderr:
                     response_text += f"```\n{stderr[:500]}\n```\n"
                 return [TextContent(type="text", text=response_text)]
-        elif final_status == "rejected":
+
+        if status_result == "rejected":
             return [TextContent(type="text", text="http_request rejected by user.")]
-        else:
-            return [TextContent(type="text", text=f"http_request approval timed out after {timeout_seconds}s. Request was NOT sent.")]
+
+        return [TextContent(type="text", text=f"http_request approval timed out after {timeout_seconds}s. Request was NOT sent.")]
 
     # ========== EXECUTE IMMEDIATELY (OPEN MODE) ==========
     try:
@@ -1500,22 +1495,13 @@ async def _handle_scan(arguments: dict, mcp_service) -> List[TextContent]:
         return [TextContent(type="text",
                             text=f"Tool `{tool_name}` not available in container.")]
 
-    response = f"**Starting {scan_type} scan on `{target}`**\n"
-    response += f"Command: `{command}`\n\n"
-
-    result = await mcp_service.execute_container_command(
-        mcp_service.current_container, command
+    # Route the built command through the standard execution path so it honors
+    # the command-approval mode, credential substitution and history logging.
+    # Previously this called execute_container_command directly, which bypassed
+    # the approval/filter safety gate and left scans unlogged.
+    return await _handle_execute(
+        {"command": command, "phase": arguments.get("phase")}, mcp_service
     )
-
-    if result["success"]:
-        response += f"**Results:**\n```\n{result['stdout']}\n```"
-        if result.get("stderr"):
-            response += f"\n**Warnings:**\n```\n{result['stderr']}\n```"
-    else:
-        error_msg = result.get("stderr") or result.get("error", "Unknown error")
-        response += f"**Scan failed:**\n```\n{error_msg}\n```"
-
-    return [TextContent(type="text", text=response)]
 
 
 async def _handle_subdomain_enum(arguments: dict, mcp_service) -> List[TextContent]:

@@ -2,7 +2,7 @@
 Nuclei Parser - Parse nuclei JSON/JSONL output
 """
 import json
-from typing import List, Dict, Any
+from typing import List, Dict
 from .base_parser import BaseParser, ParsedItem, ParseResult, ItemType, ScanType
 
 

@@ -23,7 +23,7 @@ const Commands = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [expandedCommand, setExpandedCommand] = useState(null);
-  const [searchDebounceTimer, setSearchDebounceTimer] = useState(null);
+  const searchDebounceTimer = useRef(null);
 
   // Main tab state - initialize from URL param
   const [mainTab, setMainTab] = useState(searchParams.get('tab') || 'all'); // 'all' | 'approval' | 'analytics'
@@ -64,6 +64,13 @@ const Commands = () => {
     filterRef.current = { statusFilter, searchQuery, typeFilter };
   }, [statusFilter, searchQuery, typeFilter]);
 
+  // Mirror the shown command ids into a ref so WebSocket prepends can de-dupe
+  // (the handler closes over a stale `commands` value).
+  const commandIdsRef = useRef(new Set());
+  useEffect(() => {
+    commandIdsRef.current = new Set(commands.map(c => c.id));
+  }, [commands]);
+
   // Load initial data
   useEffect(() => {
     loadStats();
@@ -96,8 +103,9 @@ const Commands = () => {
         newCmd.assessment_name?.toLowerCase().includes(sq.toLowerCase());
       const cmdType = newCmd.command_type || 'shell';
       const typeMatch = tf === 'all' || cmdType === tf;
-      if (statusMatch && searchMatch && typeMatch) {
-        setCommands(prev => [newCmd, ...prev]);
+      if (statusMatch && searchMatch && typeMatch && !commandIdsRef.current.has(newCmd.id)) {
+        commandIdsRef.current.add(newCmd.id);
+        setCommands(prev => (prev.some(c => c.id === newCmd.id) ? prev : [newCmd, ...prev]));
         setTotal(prev => prev + 1);
       }
       loadStats();
@@ -227,6 +235,17 @@ const Commands = () => {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Switch the main tab and reflect it in the URL so a refresh / shared link
+  // keeps the active tab.
+  const changeMainTab = (tab) => {
+    setMainTab(tab);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', tab);
+      return next;
+    }, { replace: true });
+  };
+
   const handleStatusFilterChange = (newStatus) => {
     setStatusFilter(newStatus);
     filterRef.current = { ...filterRef.current, statusFilter: newStatus };
@@ -242,12 +261,11 @@ const Commands = () => {
   const handleSearchChange = (value) => {
     setSearchQuery(value);
     filterRef.current = { ...filterRef.current, searchQuery: value };
-    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
-    const timer = setTimeout(() => { if (!initialLoading) reloadWithFilters({ sq: value }); }, 500);
-    setSearchDebounceTimer(timer);
+    if (searchDebounceTimer.current) clearTimeout(searchDebounceTimer.current);
+    searchDebounceTimer.current = setTimeout(() => { if (!initialLoading) reloadWithFilters({ sq: value }); }, 500);
   };
 
-  useEffect(() => { return () => { if (searchDebounceTimer) clearTimeout(searchDebounceTimer); }; }, [searchDebounceTimer]);
+  useEffect(() => { return () => { if (searchDebounceTimer.current) clearTimeout(searchDebounceTimer.current); }; }, []);
 
   const sentryRef = useInfiniteScroll({ onLoadMore: loadMore, hasMore, loading, threshold: 300 });
 
@@ -446,7 +464,7 @@ const Commands = () => {
       {/* Main Tabs */}
       <div className="flex items-center gap-6 border-b border-neutral-200 dark:border-neutral-700">
         <button
-          onClick={() => setMainTab('all')}
+          onClick={() => changeMainTab('all')}
           className={`pb-3 text-sm font-medium border-b-2 -mb-px transition-colors ${mainTab === 'all'
             ? 'border-neutral-900 dark:border-neutral-100 text-neutral-900 dark:text-neutral-100'
             : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'
@@ -455,7 +473,7 @@ const Commands = () => {
           All Commands
         </button>
         <button
-          onClick={() => setMainTab('approval')}
+          onClick={() => changeMainTab('approval')}
           className={`pb-3 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-2 ${mainTab === 'approval'
             ? 'border-neutral-900 dark:border-neutral-100 text-neutral-900 dark:text-neutral-100'
             : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'
@@ -469,7 +487,7 @@ const Commands = () => {
           )}
         </button>
         <button
-          onClick={() => setMainTab('analytics')}
+          onClick={() => changeMainTab('analytics')}
           className={`pb-3 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-2 ${mainTab === 'analytics'
             ? 'border-neutral-900 dark:border-neutral-100 text-neutral-900 dark:text-neutral-100'
             : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'

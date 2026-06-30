@@ -17,13 +17,28 @@ from weasyprint import HTML
 from sqlalchemy.orm import Session
 
 from config import settings
-from models import Assessment, Card, ReconData, CommandHistory, Credential
+from models import Assessment, Card, ReconData, CommandHistory, Credential, AsvsRequirement
 from services.container_service import ContainerService
+from services.asvs_service import compute_summary as compute_asvs_summary
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
+
+# ASVS verdict colors (parallel to SEVERITY_COLORS), reused in the report template.
+ASVS_STATUS_COLORS = {
+    "PASS": "#16a34a",
+    "FAIL": "#e11d48",
+    "NA": "#64748b",
+    "NOT_TESTED": "#f59e0b",
+}
+ASVS_STATUS_LABEL = {
+    "PASS": "Pass",
+    "FAIL": "Fail",
+    "NA": "N/A",
+    "NOT_TESTED": "Not tested",
+}
 SEVERITY_COLORS = {
     "CRITICAL": "#e11d48",
     "HIGH": "#f43f5e",
@@ -353,6 +368,41 @@ async def generate_pdf_report(
     # --- Risk score ---
     risk_score = _compute_risk_score(findings)
 
+    # --- OWASP ASVS grid (only for ASVS-methodology assessments) ---
+    asvs_enabled = (assessment.methodology == "asvs")
+    asvs_summary = None
+    asvs_failures = []
+    asvs_chapters_reqs = []
+    if asvs_enabled:
+        asvs_reqs = (
+            db.query(AsvsRequirement)
+            .filter(AsvsRequirement.assessment_id == assessment_id)
+            .all()
+        )
+        if asvs_reqs:
+            asvs_summary = compute_asvs_summary(db, assessment)
+            asvs_failures = sorted(
+                [r for r in asvs_reqs if r.status == "FAIL"],
+                key=lambda r: SEVERITY_ORDER.get(r.severity or "INFO", 99),
+            )
+
+            def _asvs_key(r):
+                try:
+                    return tuple(int(p) for p in r.req_id[1:].split("."))
+                except Exception:
+                    return (999,)
+
+            chap_map = {}
+            for r in sorted(asvs_reqs, key=_asvs_key):
+                ch = chap_map.setdefault(
+                    r.chapter_id,
+                    {"chapter_id": r.chapter_id, "chapter_name": r.chapter_name, "reqs": []},
+                )
+                ch["reqs"].append(r)
+            asvs_chapters_reqs = sorted(chap_map.values(), key=lambda c: int(c["chapter_id"][1:]))
+        else:
+            asvs_enabled = False
+
     # --- Methodology (rendered markdown) ---
     methodology_html = await _load_methodology_html(assessment)
 
@@ -385,6 +435,12 @@ async def generate_pdf_report(
         logo_b64=logo_b64,
         methodology_html=methodology_html,
         include_secrets=include_secrets,
+        asvs_enabled=asvs_enabled,
+        asvs_summary=asvs_summary,
+        asvs_failures=asvs_failures,
+        asvs_chapters_reqs=asvs_chapters_reqs,
+        asvs_status_colors=ASVS_STATUS_COLORS,
+        asvs_status_label=ASVS_STATUS_LABEL,
     )
 
     # --- Generate PDF ---

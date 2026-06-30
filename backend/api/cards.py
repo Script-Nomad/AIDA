@@ -16,6 +16,28 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/assessments/{assessment_id}/cards", tags=["cards"])
 
+# Global router (no per-assessment prefix) for cross-assessment aggregates such
+# as the dashboard, which previously issued one /cards request per assessment.
+global_router = APIRouter(prefix="/findings", tags=["findings"])
+
+
+@global_router.get("")
+async def list_all_findings(db: Session = Depends(get_db)):
+    """Return every 'finding' card across all assessments in a single query."""
+    rows = (
+        db.query(Card, Assessment.name)
+        .join(Assessment, Card.assessment_id == Assessment.id)
+        .filter(Card.card_type == "finding")
+        .order_by(Card.created_at.desc())
+        .all()
+    )
+    findings = []
+    for card, assessment_name in rows:
+        item = CardResponse.model_validate(card).model_dump(mode="json")
+        item["assessment_name"] = assessment_name
+        findings.append(item)
+    return findings
+
 
 @router.get("", response_model=List[CardResponse])
 async def list_cards(
@@ -128,6 +150,14 @@ async def update_card(
 
     # Update fields (partial update - only provided fields)
     update_data = card_update.model_dump(exclude_unset=True)
+
+    # Validate card_type on update too (create_card already does this).
+    if "card_type" in update_data and update_data["card_type"] not in ["finding", "observation", "info"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="card_type must be one of: finding, observation, info"
+        )
+
     for field, value in update_data.items():
         setattr(card, field, value)
 

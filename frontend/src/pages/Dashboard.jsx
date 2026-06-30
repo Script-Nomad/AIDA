@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   FileText,
@@ -15,7 +15,7 @@ import {
 import CreateAssessmentModal from '../components/assessment/CreateAssessmentModal';
 import assessmentService from '../services/assessmentService';
 import apiClient from '../services/api';
-import { commandService } from '../services/commandService';
+import commandService from '../services/commandService';
 import toolStatsService from '../services/toolStatsService';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
 
@@ -81,6 +81,7 @@ const Dashboard = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const { subscribe } = useWebSocketContext();
+  const findingsReloadTimer = useRef(null);
 
   useEffect(() => {
     loadDashboardData();
@@ -108,49 +109,52 @@ const Dashboard = () => {
 
     const reloadFindings = async () => {
       try {
-        const { data: assessmentsData } = await apiClient.get('/assessments');
+        // One aggregate request instead of one /cards call per assessment.
+        const [{ data: assessmentsData }, { data: findingsData }] = await Promise.all([
+          apiClient.get('/assessments'),
+          apiClient.get('/findings'),
+        ]);
         setAssessments(assessmentsData);
-        const findingsPromises = assessmentsData.map(a =>
-          apiClient.get(`/assessments/${a.id}/cards`)
-            .then(res => res.data.filter(card => card.card_type === 'finding'))
-            .catch(() => [])
-        );
-        const arrays = await Promise.all(findingsPromises);
-        setAllFindings(arrays.flat());
+        setAllFindings(findingsData);
       } catch (error) {
         // silently ignore
       }
     };
 
+    // Coalesce bursts of card/assessment events (e.g. importing a scan) into a
+    // single reload.
+    const debouncedReloadFindings = () => {
+      if (findingsReloadTimer.current) clearTimeout(findingsReloadTimer.current);
+      findingsReloadTimer.current = setTimeout(reloadFindings, 300);
+    };
+
     const unsubscribes = [
       subscribe('command_completed', reloadCommands),
       subscribe('command_failed', reloadCommands),
-      subscribe('card_added', reloadFindings),
-      subscribe('card_updated', reloadFindings),
-      subscribe('card_deleted', reloadFindings),
-      subscribe('assessment_created', reloadFindings),
-      subscribe('assessment_updated', reloadFindings),
-      subscribe('assessment_deleted', reloadFindings),
+      subscribe('card_added', debouncedReloadFindings),
+      subscribe('card_updated', debouncedReloadFindings),
+      subscribe('card_deleted', debouncedReloadFindings),
+      subscribe('assessment_created', debouncedReloadFindings),
+      subscribe('assessment_updated', debouncedReloadFindings),
+      subscribe('assessment_deleted', debouncedReloadFindings),
     ];
-    return () => unsubscribes.forEach(unsub => unsub && unsub());
+    return () => {
+      unsubscribes.forEach(unsub => unsub && unsub());
+      if (findingsReloadTimer.current) clearTimeout(findingsReloadTimer.current);
+    };
   }, [subscribe]);
 
   const loadDashboardData = async () => {
     try {
       setLoading(true);
 
-      // Fetch all assessments
-      const { data: assessmentsData } = await apiClient.get('/assessments');
+      // Fetch all assessments and all findings (one aggregate request instead
+      // of one /cards call per assessment).
+      const [{ data: assessmentsData }, { data: findings }] = await Promise.all([
+        apiClient.get('/assessments'),
+        apiClient.get('/findings'),
+      ]);
       setAssessments(assessmentsData);
-
-      // Fetch all findings from all assessments
-      const findingsPromises = assessmentsData.map(assessment =>
-        apiClient.get(`/assessments/${assessment.id}/cards`)
-          .then(res => res.data.filter(card => card.card_type === 'finding'))
-          .catch(() => [])
-      );
-      const findingsArrays = await Promise.all(findingsPromises);
-      const findings = findingsArrays.flat();
       setAllFindings(findings);
 
       // Fetch ALL commands using global endpoint with pagination

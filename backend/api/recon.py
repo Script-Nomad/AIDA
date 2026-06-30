@@ -125,8 +125,8 @@ async def create_recon_data_batch(
             detail=f"Assessment with id {assessment_id} not found"
         )
 
-    # Validate and normalize entries using Pydantic schema
-    from schemas.recon import ReconDataCreate
+    # Validate and normalize entries using Pydantic schema (ReconDataCreate is
+    # imported at module level)
     validated_entries = []
     for entry in entries:
         try:

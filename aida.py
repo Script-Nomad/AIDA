@@ -89,6 +89,7 @@ console = Console()
 AIDA_ROOT = Path(__file__).parent.absolute()
 AIDA_CONFIG_DIR = AIDA_ROOT / ".aida"
 PREPROMPT_FILE = AIDA_ROOT / "Docs" / "PrePrompt.txt"
+PREPROMPT_ASVS_FILE = AIDA_ROOT / "Docs" / "PrePrompt-ASVS.txt"
 MCP_SERVER_PATH = AIDA_ROOT / "backend" / "mcp" / "aida_mcp_server.py"
 MCP_CONFIG_FILE = AIDA_CONFIG_DIR / "mcp-config.json"
 SESSION_FILE = AIDA_CONFIG_DIR / "session"
@@ -483,6 +484,19 @@ def translate_host_path(path: str) -> str:
     return f"/mnt/{drive}/{rest}" if rest else f"/mnt/{drive}"
 
 
+def fetch_assessment_methodology(assessment_id: int, backend_url: str, token: str = "") -> str:
+    """Return an assessment's methodology ('standard' | 'asvs'); 'standard' on any error."""
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(f"{backend_url}/assessments/{assessment_id}", headers=headers)
+            if response.status_code == 200:
+                return response.json().get("methodology") or "standard"
+    except Exception:
+        pass
+    return "standard"
+
+
 def resolve_workspace(assessment_name: str, backend_url: str, token: str = "") -> Optional[dict]:
     """Resolve assessment workspace via API, with retry on transient network errors"""
     import time
@@ -784,6 +798,21 @@ def main(assessment, model, permission_mode, preprompt, base_url, api_key, no_mc
         if not quiet and debug:
             console.print(f"[dim]✓ Container: {container_name}[/dim]")
             console.print(f"[dim]✓ Workspace: {workspace_path}[/dim]\n")
+
+        # ASVS assessments use a methodology-specific preprompt (grid-walking loop).
+        # A user-supplied --preprompt always wins.
+        if not preprompt:
+            methodology = fetch_assessment_methodology(assessment_id, backend_url, token)
+            if methodology == "asvs" and PREPROMPT_ASVS_FILE.exists():
+                try:
+                    preprompt_content = PREPROMPT_ASVS_FILE.read_text()
+                    if not quiet:
+                        console.print(
+                            f"[green]✓ ASVS assessment — using methodology preprompt:[/green] "
+                            f"[cyan]{PREPROMPT_ASVS_FILE.name}[/cyan]\n"
+                        )
+                except Exception as e:
+                    console.print(f"[yellow]⚠ Failed to read ASVS preprompt, using default: {e}[/yellow]\n")
 
         # Enhance preprompt with assessment context for all CLI types
         preprompt_content += f"""

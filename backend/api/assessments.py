@@ -428,10 +428,22 @@ async def parse_scan_files(
             detail="No files uploaded"
         )
     
-    # Read all files
+    # Read all files, enforcing a size cap so a large upload cannot exhaust
+    # memory (each file is fully read and parsed in-memory below).
+    MAX_FILE_BYTES = 25 * 1024 * 1024  # 25 MB per file
+    MAX_TOTAL_BYTES = 100 * 1024 * 1024  # 100 MB per request
     file_data = []
+    total_bytes = 0
     for file in files:
         content = await file.read()
+        total_bytes += len(content)
+        if len(content) > MAX_FILE_BYTES or total_bytes > MAX_TOTAL_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Uploaded scan files are too large "
+                       f"(limit {MAX_FILE_BYTES // (1024 * 1024)} MB per file, "
+                       f"{MAX_TOTAL_BYTES // (1024 * 1024)} MB total).",
+            )
         file_data.append((content, file.filename))
     
     # Initialize importer and parse

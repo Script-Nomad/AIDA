@@ -1,7 +1,7 @@
 """
 Tool Usage Analyzer - Extract and categorize tools from commands
 """
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 # Tool categorization mapping
@@ -142,7 +142,7 @@ def get_all_tools_in_category(category: str) -> List[str]:
 
 def get_tool_counts_by_category(
     tool_counts: Dict[str, int]
-) -> Dict[str, Dict[str, any]]:
+) -> Dict[str, Dict[str, Any]]:
     """
     Group tool counts by category
     

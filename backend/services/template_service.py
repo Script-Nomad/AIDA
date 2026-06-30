@@ -103,6 +103,21 @@ TEMPLATES = {
         "suggested_tools": ["nmap", "smbclient", "hydra", "nc"],
     },
 
+    "owasp_asvs": {
+        "id": "owasp_asvs",
+        "name": "OWASP ASVS",
+        "icon": "shield",
+        "description": "Standards-driven verification against the OWASP Application Security Verification Standard (ASVS) v5.0. Walk the full requirement grid by level (L1/L2/L3) and chapter; record a PASS/FAIL/N-A verdict + analysis per requirement.",
+        "category": "Website",
+        "methodology": "asvs",
+        "default_scope": "OWASP ASVS verification of the target application across the selected chapters and verification level.",
+        "default_limitations": "Verification limited to the selected ASVS level and chapters. Whitebox requirements depend on source/configuration access being provided.",
+        "default_objectives": "Produce an ASVS coverage matrix: verify each in-scope requirement and document compliant controls, failures, and non-applicable items.",
+        # No phases — the ASVS grid is seeded server-side from the chosen level + chapters.
+        "phases": [],
+        "suggested_tools": ["nmap", "ffuf", "nuclei", "sqlmap", "jwt_tool", "httpx", "curl"],
+    },
+
     "blank": {
         "id": "blank",
         "name": "Blank Assessment",
@@ -127,6 +142,7 @@ def get_all_templates():
             "icon": t["icon"],
             "description": t["description"],
             "category": t["category"],
+            "methodology": t.get("methodology", "standard"),
             "suggested_tools": t["suggested_tools"],
         }
         for t in TEMPLATES.values()

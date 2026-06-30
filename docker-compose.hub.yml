@@ -25,7 +25,9 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: aida
-      POSTGRES_PASSWORD: aida_secure_password_change_me
+      # Override by exporting POSTGRES_PASSWORD or setting it in a .env file next
+      # to this compose file. The default below is only for throwaway local use.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aida_secure_password_change_me}
       POSTGRES_DB: aida_assessments
     ports:
       - "127.0.0.1:5432:5432"
@@ -76,7 +78,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: aida
-      POSTGRES_PASSWORD: aida_secure_password_change_me
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aida_secure_password_change_me}
       POSTGRES_DB: aida_assessments
       POSTGRES_HOST: postgres
       BACKEND_CORS_ORIGINS: "http://localhost:31337,http://127.0.0.1:31337"

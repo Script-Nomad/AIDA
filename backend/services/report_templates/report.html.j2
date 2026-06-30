@@ -85,6 +85,7 @@
 {% if findings %}     {% set ns.n = ns.n + 1 %}{% set _ = section_numbers.update({"find":   "%02d" % ns.n}) %}{% endif %}
 {% if observations %} {% set ns.n = ns.n + 1 %}{% set _ = section_numbers.update({"obs":    "%02d" % ns.n}) %}{% endif %}
 {% if methodology_html %} {% set ns.n = ns.n + 1 %}{% set _ = section_numbers.update({"meth": "%02d" % ns.n}) %}{% endif %}
+{% if asvs_enabled %} {% set ns.n = ns.n + 1 %}{% set _ = section_numbers.update({"asvs": "%02d" % ns.n}) %}{% endif %}
 {% if recon %}        {% set ns.n = ns.n + 1 %}{% set _ = section_numbers.update({"recon":  "%02d" % ns.n}) %}{% endif %}
 {% if credentials %}  {% set ns.n = ns.n + 1 %}{% set _ = section_numbers.update({"cred":   "%02d" % ns.n}) %}{% endif %}
 {% if info_cards %}   {% set ns.n = ns.n + 1 %}{% set _ = section_numbers.update({"info":   "%02d" % ns.n}) %}{% endif %}
@@ -112,6 +113,21 @@
 
   {% if methodology_html %}
   <div class="toc-item"><a href="#methodology"><span class="toc-num">{{ section_numbers["meth"] }}</span> Methodology</a></div>
+  {% endif %}
+
+  {% if asvs_enabled %}
+  <div class="toc-item"><a href="#asvs"><span class="toc-num">{{ section_numbers["asvs"] }}</span> OWASP ASVS Coverage ({{ asvs_summary.tested }}/{{ asvs_summary.total }})</a></div>
+  {% if asvs_failures %}
+  {% for r in asvs_failures %}
+  <div class="toc-sub">
+    <a href="#asvs-fail-{{ loop.index }}">
+      <span class="toc-sub-num">{{ section_numbers["asvs"] }}.{{ loop.index }}</span>
+      <span class="toc-sub-sev" style="background:{{ severity_colors.get(r.severity or 'INFO', '#64748b') }}">{{ r.severity or "INFO" }}</span>
+      {{ r.req_id }} — {{ r.section_name }}
+    </a>
+  </div>
+  {% endfor %}
+  {% endif %}
   {% endif %}
 
   {% if recon %}
@@ -346,6 +362,151 @@
 <div class="md-content">
   {{ methodology_html | safe }}
 </div>
+{% endif %}
+
+{# ===================== OWASP ASVS COVERAGE ===================== #}
+{% if asvs_enabled %}
+<div class="page-break"></div>
+<h2 id="asvs"><span class="section-num">{{ section_numbers["asvs"] }}</span> OWASP ASVS Coverage</h2>
+
+<p class="text-muted" style="font-size:9pt">
+  Verification against OWASP ASVS v{{ asvs_summary.asvs_version }} — target level L{{ asvs_summary.asvs_level }}.
+  Each in-scope requirement was assigned a verdict; failed requirements are detailed below.
+</p>
+
+{# --- coverage stats --- #}
+<table class="stats-row">
+  <tr>
+    <td class="stat-card">
+      <div class="stat-num">{{ asvs_summary.total }}</div>
+      <div class="stat-label">Requirements</div>
+    </td>
+    <td class="stat-card">
+      <div class="stat-num" style="color:{{ asvs_status_colors['PASS'] }}">{{ asvs_summary.by_status.get('PASS', 0) }}</div>
+      <div class="stat-label">Pass</div>
+    </td>
+    <td class="stat-card">
+      <div class="stat-num" style="color:{{ asvs_status_colors['FAIL'] }}">{{ asvs_summary.by_status.get('FAIL', 0) }}</div>
+      <div class="stat-label">Fail</div>
+    </td>
+    <td class="stat-card">
+      <div class="stat-num" style="color:{{ asvs_status_colors['NA'] }}">{{ asvs_summary.by_status.get('NA', 0) }}</div>
+      <div class="stat-label">N/A</div>
+    </td>
+  </tr>
+</table>
+
+<p style="font-size:9pt;margin-top:4px">
+  Coverage: <strong>{{ asvs_summary.tested }}/{{ asvs_summary.total }}</strong> requirements tested
+  (<strong>{{ asvs_summary.coverage_pct }}%</strong>);
+  {{ asvs_summary.by_status.get('NOT_TESTED', 0) }} not tested.
+</p>
+
+{# --- per-chapter coverage --- #}
+<h3>Coverage by Chapter</h3>
+<table class="recon-table">
+  <thead>
+    <tr>
+      <th>Chapter</th>
+      <th style="width:60px;text-align:center">Total</th>
+      <th style="width:60px;text-align:center;color:{{ asvs_status_colors['PASS'] }}">Pass</th>
+      <th style="width:60px;text-align:center;color:{{ asvs_status_colors['FAIL'] }}">Fail</th>
+      <th style="width:60px;text-align:center;color:{{ asvs_status_colors['NA'] }}">N/A</th>
+      <th style="width:80px;text-align:center">Not tested</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for ch in asvs_summary.by_chapter %}
+    <tr>
+      <td>{{ ch.chapter_id }} · {{ ch.chapter_name }}</td>
+      <td style="text-align:center">{{ ch.total }}</td>
+      <td style="text-align:center">{{ ch.by_status.get('PASS', 0) }}</td>
+      <td style="text-align:center"><strong style="color:{{ asvs_status_colors['FAIL'] }}">{{ ch.by_status.get('FAIL', 0) }}</strong></td>
+      <td style="text-align:center">{{ ch.by_status.get('NA', 0) }}</td>
+      <td style="text-align:center">{{ ch.by_status.get('NOT_TESTED', 0) }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{# --- failed requirements (the findings) --- #}
+{% if asvs_failures %}
+<h3>Failed Requirements ({{ asvs_failures|length }})</h3>
+{% for r in asvs_failures %}
+{% set sev_color = severity_colors.get(r.severity or 'INFO', '#64748b') %}
+<div class="finding" id="asvs-fail-{{ loop.index }}">
+  <div class="finding-accent" style="color:{{ sev_color }}"></div>
+  <div class="finding-header">
+    {% if r.severity %}<span class="finding-sev" style="background:{{ sev_color }}">{{ r.severity }}</span>{% endif %}
+    <span class="finding-title">{{ r.req_id }} — {{ r.section_name }}</span>
+    <span class="finding-id">{{ r.chapter_id }} · L{{ r.level }}</span>
+  </div>
+  <div class="finding-meta">
+    <table class="finding-meta-table">
+      <tbody>
+        <tr>
+          <td class="fm-label">Requirement</td>
+          <td class="fm-value" colspan="3">{{ r.description }}</td>
+        </tr>
+        {% if r.cvss_score is not none %}
+        <tr>
+          {% if r.test_type %}<td class="fm-label">Test type</td><td class="fm-value" style="width:32%">{{ r.test_type }}</td>{% else %}<td colspan="2"></td>{% endif %}
+          {% set cvss_color = "#e11d48" if r.cvss_score >= 9.0 else "#f43f5e" if r.cvss_score >= 7.0 else "#f59e0b" if r.cvss_score >= 4.0 else "#3b82f6" %}
+          <td class="fm-label">CVSS 4.0</td>
+          <td class="fm-value"><span class="cvss-badge" style="background:{{ cvss_color }}">{{ "%.1f"|format(r.cvss_score) }}</span></td>
+        </tr>
+        {% endif %}
+        {% if r.cvss_vector %}
+        <tr><td class="fm-label">Vector</td><td class="fm-value fm-mono" colspan="3">{{ r.cvss_vector }}</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  {% if r.analysis %}
+  <div class="finding-field">
+    <div class="field-label">Analysis</div>
+    <div class="md-content">{{ r.analysis | markdown | safe }}</div>
+  </div>
+  {% endif %}
+  {% if r.command_used %}
+  <div class="finding-field">
+    <div class="field-label">Command Used</div>
+    <div class="md-content">{{ r.command_used | markdown | safe }}</div>
+  </div>
+  {% endif %}
+  {% if r.evidence %}
+  <div class="finding-field">
+    <div class="field-label">Evidence</div>
+    <div class="md-content">{{ r.evidence | markdown | safe }}</div>
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+{# --- full verification matrix (appendix) --- #}
+<h3>Verification Matrix</h3>
+{% for ch in asvs_chapters_reqs %}
+<div class="recon-type-heading">{{ ch.chapter_id }} · {{ ch.chapter_name }}<span class="recon-count">{{ ch.reqs|length }} requirement{{ "s" if ch.reqs|length != 1 }}</span></div>
+<table class="recon-table">
+  <colgroup>
+    <col style="width:70px">
+    <col style="width:34px">
+    <col style="width:80px">
+    <col>
+  </colgroup>
+  <tbody>
+  {% for r in ch.reqs %}
+    <tr>
+      <td class="recon-name">{{ r.req_id }}</td>
+      <td style="text-align:center">L{{ r.level }}</td>
+      <td><span class="top-sev-badge" style="background:{{ asvs_status_colors.get(r.status or 'NOT_TESTED', '#64748b') }}">{{ asvs_status_label.get(r.status or 'NOT_TESTED', r.status) }}</span></td>
+      <td class="recon-details">{{ r.description }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endfor %}
 {% endif %}
 
 {# ===================== RECON ===================== #}
