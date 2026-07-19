@@ -160,7 +160,7 @@ class SearchService:
             # Check recency (created in last 7 days)
             is_recent = False
             if assessment.created_at:
-                is_recent = assessment.created_at > datetime.now() - timedelta(days=7)
+                is_recent = assessment.created_at > datetime.utcnow() - timedelta(days=7)
 
             # Calculate score (check all fields)
             score = max(
@@ -227,7 +227,7 @@ class SearchService:
             # Check recency
             is_recent = False
             if cmd.created_at:
-                is_recent = cmd.created_at > datetime.now() - timedelta(days=7)
+                is_recent = cmd.created_at > datetime.utcnow() - timedelta(days=7)
 
             # Calculate score
             score = max(
@@ -313,7 +313,7 @@ class SearchService:
             # Check recency
             is_recent = False
             if card.created_at:
-                is_recent = card.created_at > datetime.now() - timedelta(days=7)
+                is_recent = card.created_at > datetime.utcnow() - timedelta(days=7)
 
             # Calculate score
             score = max(
@@ -385,7 +385,7 @@ class SearchService:
             # Check recency
             is_recent = False
             if item.created_at:
-                is_recent = item.created_at > datetime.now() - timedelta(days=7)
+                is_recent = item.created_at > datetime.utcnow() - timedelta(days=7)
 
             # Calculate score
             score = max(

@@ -49,9 +49,10 @@ Claude + AIDA isn't just talk. It produces results that end up in CVE databases.
 
 | ID | Severity | Project | Description |
 |----|----------|---------|-------------|
-| [CVE-2026-32034](https://nvd.nist.gov/vuln/detail/CVE-2026-32034) | ![MEDIUM](https://img.shields.io/badge/CVSS-5.6%20MEDIUM-yellow) | [openclaw/openclaw](https://github.com/openclaw/openclaw) | Insecure HTTP permits hijacking |
-| [GHSA-xfvv-ggvq-pchh](https://github.com/appsmithorg/appsmith/security/advisories/GHSA-xfvv-ggvq-pchh) | ![HIGH](https://img.shields.io/badge/CVSS-8.9%20HIGH-orange) | [appsmithorg/appsmith](https://github.com/appsmithorg/appsmith) | RCE via newline injection in env variable endpoint |
-| [GHSA-vvxf-f8q9-86gh](https://github.com/appsmithorg/appsmith/security/advisories/GHSA-vvxf-f8q9-86gh) | ![MEDIUM](https://img.shields.io/badge/CVSS-5.1%20MEDIUM-yellow) | [appsmithorg/appsmith](https://github.com/appsmithorg/appsmith) | SSRF via SMTP test endpoint — internal port scanning |
+| [CVE-2026-49869](https://www.cve.org/CVERecord?id=CVE-2026-49869) | ![CRITICAL](https://img.shields.io/badge/CVSS-10.0%20CRITICAL-critical) | [kestra-io/kestra](https://github.com/kestra-io/kestra) | Unauthenticated RCE via auth bypass + OS command injection (CWE-78/184/287/918) |
+| [CVE-2026-50189](https://www.cve.org/CVERecord?id=CVE-2026-50189) / [GHSA-xfvv-ggvq-pchh](https://github.com/appsmithorg/appsmith/security/advisories/GHSA-xfvv-ggvq-pchh) | ![HIGH](https://img.shields.io/badge/CVSS-8.9%20HIGH-orange) | [appsmithorg/appsmith](https://github.com/appsmithorg/appsmith) | RCE via newline injection in env variable endpoint |
+| [CVE-2026-32034](https://www.cve.org/CVERecord?id=CVE-2026-32034) | ![MEDIUM](https://img.shields.io/badge/CVSS-5.6%20MEDIUM-yellow) | [openclaw/openclaw](https://github.com/openclaw/openclaw) | Insecure HTTP permits hijacking |
+| [CVE-2026-49979](https://www.cve.org/CVERecord?id=CVE-2026-49979) / [GHSA-vvxf-f8q9-86gh](https://github.com/appsmithorg/appsmith/security/advisories/GHSA-vvxf-f8q9-86gh) | ![MEDIUM](https://img.shields.io/badge/CVSS-5.1%20MEDIUM-yellow) | [appsmithorg/appsmith](https://github.com/appsmithorg/appsmith) | SSRF via SMTP test endpoint — internal port scanning |
 
 *More under responsible disclosure — awaiting publication.*
 

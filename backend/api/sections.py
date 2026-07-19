@@ -64,8 +64,10 @@ async def create_section(
     ).first()
 
     if existing:
-        # Update existing
-        for field, value in section.model_dump().items():
+        # Update existing — only overwrite fields the client actually sent, so
+        # a partial upsert doesn't reset omitted columns to their defaults
+        # (update_section uses exclude_unset for the same reason).
+        for field, value in section.model_dump(exclude_unset=True).items():
             setattr(existing, field, value)
         db.commit()
         db.refresh(existing)

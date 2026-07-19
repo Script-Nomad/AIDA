@@ -90,6 +90,13 @@ def update_user(
             )
 
     if data.email is not None:
+        # Reject an email already used by another user. Without this the DB
+        # unique constraint would surface as an unhandled 500 (create_user
+        # performs the same check).
+        if data.email and db.query(User).filter(
+            User.email == data.email, User.id != user_id
+        ).first():
+            raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
         user.email = data.email
     if data.is_active is not None:
         user.is_active = data.is_active

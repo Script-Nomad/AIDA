@@ -33,6 +33,9 @@ class EventType(str, Enum):
     # Section events (phases)
     SECTION_UPDATED = "section_updated"
 
+    # ASVS requirement events
+    ASVS_UPDATED = "asvs_updated"
+
     # Command events
     COMMAND_STARTED = "command_started"
     COMMAND_COMPLETED = "command_completed"
@@ -128,6 +131,15 @@ def event_card_deleted(assessment_id: int, card_id: int) -> dict:
     return create_event(
         EventType.CARD_DELETED,
         {"card_id": card_id},
+        assessment_id=assessment_id
+    )
+
+
+def event_asvs_updated(assessment_id: int, req_id: str, requirement_data: dict) -> dict:
+    """Create asvs_updated event (a requirement verdict changed)"""
+    return create_event(
+        EventType.ASVS_UPDATED,
+        {"req_id": req_id, "requirement": requirement_data},
         assessment_id=assessment_id
     )
 

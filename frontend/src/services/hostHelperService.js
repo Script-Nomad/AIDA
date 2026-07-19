@@ -42,10 +42,27 @@ export const isHostHelperAvailable = async () => {
     }
 };
 
+/**
+ * Launch aida.py for an assessment in a new terminal window on the host.
+ * Throws if the helper is unreachable or returns a non-2xx status.
+ *
+ * @param {string} assessmentName
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export const launchAidaOnHost = async (assessmentName) => {
+    const response = await axios.post(
+        `${HELPER_URL}/launch`,
+        { assessment_name: assessmentName },
+        { timeout: 5000 },
+    );
+    return response.data;
+};
+
 // Backward-compat alias — old code still imports under the previous name
 export const isFolderOpenerAvailable = isHostHelperAvailable;
 
 export default {
     openFolderOnHost,
     isHostHelperAvailable,
+    launchAidaOnHost,
 };

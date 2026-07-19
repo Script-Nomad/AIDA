@@ -52,8 +52,11 @@ class Settings(BaseSettings):
     # Backend API URL (for MCP server)
     BACKEND_API_URL: str = "http://localhost:8000/api"
 
-    # Authentication (JWT)
-    SECRET_KEY: str = "aida-secret-key-change-in-production-min-32-chars!"
+    # Authentication (JWT). The signing key is provisioned by
+    # bootstrap_secrets.ensure_secret_key() and read directly from the
+    # environment by auth.py — never from here — so there is no hardcoded
+    # default to leak.
+    SECRET_KEY: Optional[str] = None
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
 
     # Environment

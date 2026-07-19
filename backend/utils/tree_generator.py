@@ -2,11 +2,11 @@
 Tree generator utility for workspace visualization
 """
 import asyncio
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from pathlib import Path
 
 
-async def _run_docker_command(container_name: str, command: str) -> Dict[str, any]:
+async def _run_docker_command(container_name: str, command: str) -> Dict[str, Any]:
     """Run a command in docker container and return result"""
     try:
         process = await asyncio.create_subprocess_exec(
@@ -31,7 +31,7 @@ async def _run_docker_command(container_name: str, command: str) -> Dict[str, an
         }
 
 
-async def _get_directory_contents(container_name: str, path: str) -> List[Dict[str, any]]:
+async def _get_directory_contents(container_name: str, path: str) -> List[Dict[str, Any]]:
     """Get contents of a directory with file info"""
     # Use ls with format: type|name|size
     # -p adds / to directories, -1 for one per line
@@ -61,7 +61,7 @@ async def _get_directory_contents(container_name: str, path: str) -> List[Dict[s
     return items
 
 
-async def _get_context_files_detailed(container_name: str, context_path: str) -> List[Dict[str, any]]:
+async def _get_context_files_detailed(container_name: str, context_path: str) -> List[Dict[str, Any]]:
     """Get detailed info about files in context directory"""
     # Get file list with sizes
     command = f"cd {context_path} && ls -lh 2>/dev/null || true"

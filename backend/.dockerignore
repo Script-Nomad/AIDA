@@ -1,0 +1,13 @@
+# Keep the build context (and image layers) free of local cruft and secrets.
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+# Real runtime secret (bootstrap_secrets regenerates it at startup if missing).
+.env
+logs/
+*.log
+.DS_Store
+*.bak

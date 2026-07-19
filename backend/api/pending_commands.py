@@ -3,7 +3,7 @@ Pending Commands and Command Settings API endpoints
 """
 import json
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -90,17 +90,17 @@ def check_and_timeout_expired_commands(db: Session):
     for cmd in pending_cmds:
         # Use command-specific timeout or fall back to global setting
         cmd_timeout = cmd.timeout_seconds if cmd.timeout_seconds is not None else timeout_seconds
-        
+
         if cmd.created_at:
-            # Handle timezone-aware datetime
+            # Normalize created_at to naive UTC so we never mix aware/naive
+            # datetimes (created_at may be stored either way depending on the
+            # driver), which previously raised TypeError mid-loop.
             created_at = cmd.created_at
             if created_at.tzinfo is not None:
-                from datetime import timezone
-                now = datetime.now(timezone.utc)
-            
-            elapsed = (now - created_at.replace(tzinfo=None) if created_at.tzinfo else now - created_at)
-            elapsed_seconds = elapsed.total_seconds()
-            
+                created_at = created_at.astimezone(timezone.utc).replace(tzinfo=None)
+
+            elapsed_seconds = (now - created_at).total_seconds()
+
             if elapsed_seconds > cmd_timeout:
                 cmd.status = "timeout"
                 cmd.resolved_at = now
@@ -377,30 +377,46 @@ async def approve_command(
     
     # Execute the command — route based on command_type
     container_service = ContainerService()
-    if pending_cmd.command_type == "python":
-        exec_result = await container_service.execute_and_log_python(
-            assessment_id=pending_cmd.assessment_id,
-            code=pending_cmd.command,
-            phase=pending_cmd.phase,
-            db=db
+    try:
+        if pending_cmd.command_type == "python":
+            exec_result = await container_service.execute_and_log_python(
+                assessment_id=pending_cmd.assessment_id,
+                code=pending_cmd.command,
+                phase=pending_cmd.phase,
+                db=db
+            )
+        elif pending_cmd.command_type == "http":
+            # pending_cmd.command stores the JSON-serialized HttpRequestRequest params
+            http_params_dict = json.loads(pending_cmd.command)
+            http_params = HttpRequestRequest(**http_params_dict)
+            exec_result = await container_service.execute_and_log_http_request(
+                assessment_id=pending_cmd.assessment_id,
+                params=http_params,
+                db=db
+            )
+        else:
+            exec_result = await container_service.execute_and_log_command(
+                assessment_id=pending_cmd.assessment_id,
+                command=pending_cmd.command,
+                phase=pending_cmd.phase,
+                db=db
+            )
+    except Exception as e:
+        # Don't leave the command stuck in "pending" (and re-approvable forever)
+        # if execution raises — bad JSON payload, container down, etc. Mark it
+        # as failed and surface the error to the caller.
+        pending_cmd.status = "failed"
+        pending_cmd.resolved_by = approval.approved_by
+        pending_cmd.resolved_at = datetime.utcnow()
+        pending_cmd.rejection_reason = f"Execution failed: {e}"
+        pending_cmd.execution_result = {"success": False, "error": str(e)}
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Command execution failed: {e}"
         )
-    elif pending_cmd.command_type == "http":
-        # pending_cmd.command stores the JSON-serialized HttpRequestRequest params
-        http_params_dict = json.loads(pending_cmd.command)
-        http_params = HttpRequestRequest(**http_params_dict)
-        exec_result = await container_service.execute_and_log_http_request(
-            assessment_id=pending_cmd.assessment_id,
-            params=http_params,
-            db=db
-        )
-    else:
-        exec_result = await container_service.execute_and_log_command(
-            assessment_id=pending_cmd.assessment_id,
-            command=pending_cmd.command,
-            phase=pending_cmd.phase,
-            db=db
-        )
-    
+
+
     # Update pending command
     pending_cmd.status = "executed"
     pending_cmd.resolved_by = approval.approved_by

@@ -69,10 +69,13 @@ class ConnectionManager:
         # Remove from global connections
         self.global_connections.discard(websocket)
 
-        # Remove from assessment-specific connections
-        for assessment_id, connections in self.assessment_connections.items():
+        # Remove from assessment-specific connections. Iterate over a copy so we
+        # can delete now-empty sets in place (they previously leaked forever).
+        for assessment_id, connections in list(self.assessment_connections.items()):
             if websocket in connections:
                 connections.remove(websocket)
+                if not connections:
+                    del self.assessment_connections[assessment_id]
                 logger.info(
                     "WebSocket disconnected",
                     assessment_id=assessment_id,
@@ -107,8 +110,9 @@ class ConnectionManager:
                 target_connections=len(target_connections)
             )
         else:
-            # Broadcast to all connections
-            target_connections = self.active_connections
+            # Broadcast to all connections (snapshot: disconnect() mutates the
+            # list during cleanup below)
+            target_connections = list(self.active_connections)
             logger.debug(
                 "Broadcasting globally",
                 event_type=event.get("type"),

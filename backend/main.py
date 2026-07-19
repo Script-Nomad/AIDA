@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from auth import get_current_user, require_admin, verify_mcp_api_key
 from config import settings
 from database import init_db
-from api import assessments, cards, recon, sections, containers, folders, global_commands, search, system, credentials, websocket, workspace, pending_commands, context_documents, source_code, auth, reports, timeline, notifications, templates, users, api_keys
+from api import assessments, cards, recon, sections, containers, folders, global_commands, search, system, credentials, websocket, workspace, pending_commands, context_documents, source_code, auth, reports, timeline, notifications, templates, users, api_keys, asvs_requirements
 from api import commands
 from api.commands import global_router as commands_global_router
 from mcp_http_app import handle_mcp_request, mcp_lifespan
@@ -59,12 +59,21 @@ async def lifespan(app: FastAPI):
         yield
 
 
+# Disable the interactive API docs (Swagger UI, ReDoc and the OpenAPI schema)
+# outside of development so the full API surface is not exposed publicly when
+# the backend is reachable through the reverse proxy (e.g. ``--domain`` mode).
+# DEBUG=true can force them back on for troubleshooting a production build.
+_docs_enabled = settings.ENVIRONMENT != "production" or settings.DEBUG
+
 # Create FastAPI app
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description=settings.PROJECT_TAGLINE,
     lifespan=lifespan,
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
 )
 
 # Rate limiting
@@ -97,6 +106,9 @@ app.include_router(websocket.router, prefix=settings.API_V1_PREFIX)
 # Protected routers
 app.include_router(assessments.router, prefix=settings.API_V1_PREFIX, dependencies=protected)
 app.include_router(cards.router, prefix=settings.API_V1_PREFIX, dependencies=protected)
+app.include_router(cards.global_router, prefix=settings.API_V1_PREFIX, dependencies=protected)
+app.include_router(asvs_requirements.router, prefix=settings.API_V1_PREFIX, dependencies=protected)
+app.include_router(asvs_requirements.catalog_router, prefix=settings.API_V1_PREFIX, dependencies=protected)
 app.include_router(recon.router, prefix=settings.API_V1_PREFIX, dependencies=protected)
 app.include_router(commands.router, prefix=settings.API_V1_PREFIX, dependencies=protected)
 app.include_router(commands_global_router, prefix=settings.API_V1_PREFIX, dependencies=protected)
@@ -151,7 +163,7 @@ async def root():
         "message": f"{settings.PROJECT_NAME} API",
         "tagline": settings.PROJECT_TAGLINE,
         "version": settings.VERSION,
-        "docs": "/docs"
+        "docs": "/docs" if _docs_enabled else None,
     }
 
 

@@ -2,7 +2,7 @@
 Ffuf Parser - Parse ffuf JSON output
 """
 import json
-from typing import List, Dict, Any
+from typing import List
 from urllib.parse import urlparse
 from .base_parser import BaseParser, ParsedItem, ParseResult, ItemType, ScanType
 
