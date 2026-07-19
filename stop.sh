@@ -74,6 +74,11 @@ else
     STOP_FILES=""
 fi
 
+# Include custom Caddy port overrides if present
+if [[ -f "$SCRIPT_DIR/.aida/docker-compose.caddy-reset.yml" && -f "$SCRIPT_DIR/.aida/docker-compose.caddy-ports.yml" ]]; then
+    STOP_FILES="$STOP_FILES -f .aida/docker-compose.caddy-reset.yml -f .aida/docker-compose.caddy-ports.yml"
+fi
+
 log "Stopping $RUNNING container(s)..."
 # Use 'stop' (not 'down') — containers are kept, volumes untouched, data safe
 $COMPOSE_CMD $STOP_FILES stop

@@ -51,6 +51,19 @@ else
     COMPOSE_FILES=""
     MODE_LABEL="Dev"
 fi
+
+# Load persisted port config (written by start.sh when using custom TLS ports)
+CADDY_HTTPS_PORT="443"
+if [[ -f "$SCRIPT_DIR/.aida/mode-config" ]]; then
+    # shellcheck source=/dev/null
+    source "$SCRIPT_DIR/.aida/mode-config"
+fi
+
+# Include custom Caddy port overrides if present
+if [[ -f "$SCRIPT_DIR/.aida/docker-compose.caddy-reset.yml" && -f "$SCRIPT_DIR/.aida/docker-compose.caddy-ports.yml" ]]; then
+    COMPOSE_FILES="$COMPOSE_FILES -f .aida/docker-compose.caddy-reset.yml -f .aida/docker-compose.caddy-ports.yml"
+fi
+
 COMPOSE="$COMPOSE_CMD $COMPOSE_FILES"
 
 # Check if containers exist at all
@@ -104,8 +117,12 @@ wait_for_service "Backend"    "curl -sf http://localhost:8000/health"          6
 # Frontend check: depends on the mode detected above
 case "$MODE_LABEL" in
     "TLS prod")
-        FRONTEND_URL="https://localhost"
-        wait_for_service "Caddy" "curl -sfk https://localhost" 60
+        if [[ "$CADDY_HTTPS_PORT" == "443" ]]; then
+            FRONTEND_URL="https://localhost"
+        else
+            FRONTEND_URL="https://localhost:${CADDY_HTTPS_PORT}"
+        fi
+        wait_for_service "Caddy" "curl -sfk https://localhost:${CADDY_HTTPS_PORT}" 60
         ;;
     "Local prod")
         FRONTEND_URL="http://localhost:31337"

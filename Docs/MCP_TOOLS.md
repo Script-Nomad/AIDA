@@ -77,6 +77,15 @@ The CLI launcher can emit the HTTP config for you:
 python3 aida.py --http http://localhost:8000/mcp --mcp-api-key aida_sk_...
 ```
 
+For OpenAI Codex CLI, AIDA configures this automatically when launched with
+`--cli codex`. To register the HTTP server directly in Codex:
+
+```bash
+export AIDA_MCP_API_KEY="aida_sk_..."
+codex mcp add aida --url http://localhost:8000/mcp \
+  --bearer-token-env-var AIDA_MCP_API_KEY
+```
+
 ### Security
 
 - **Default off.** The `/mcp` route returns 503 until an admin enables it.

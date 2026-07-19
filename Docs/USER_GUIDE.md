@@ -157,11 +157,13 @@ For infrastructure assessments, it's recommended to run long scans beforehand an
 Launch AIDA with your preferred AI client:
 
 ```bash
-# Auto-detect Claude Code or Kimi CLI
+# Launch Claude Code (default)
 python3 aida.py --assessment "Acme Corp Pentest"
 
-# Or force a specific CLI
+# Auto-detect or select a specific CLI
+python3 aida.py --assessment "Acme Corp Pentest" --cli auto
 python3 aida.py --assessment "Acme Corp Pentest" --cli claude
+python3 aida.py --assessment "Acme Corp Pentest" --cli codex
 python3 aida.py --assessment "Acme Corp Pentest" --cli kimi
 ```
 

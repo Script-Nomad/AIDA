@@ -1043,7 +1043,7 @@ const AssessmentDetail = () => {
                   python3 aida.py
                 </div>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                  Using <strong className="text-neutral-600 dark:text-neutral-300">Claude Code or Kimi CLI</strong>? The launcher handles everything automatically — no extra step needed.
+                  Using <strong className="text-neutral-600 dark:text-neutral-300">Claude Code, Codex, Kimi, or Qwen</strong>? The launcher handles everything automatically — no extra step needed.
                 </p>
               </div>
             </div>

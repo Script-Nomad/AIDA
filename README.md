@@ -110,11 +110,14 @@ Dashboard: `http://localhost:31337`
 ### Launch the Agent
 
 ```bash
-# Auto-detects Claude or Kimi CLI
+# Launches Claude Code by default
 python3 aida.py --assessment "target-corp"
 
-# Force a specific model
-python3 aida.py --assessment "target-corp" --cli claude
+# Auto-detect Claude, Codex, Kimi, or Qwen
+python3 aida.py --assessment "target-corp" --cli auto
+
+# Force OpenAI Codex
+python3 aida.py --assessment "target-corp" --cli codex
 
 # No confirmation prompts
 python3 aida.py --assessment "target-corp" --yes
@@ -139,7 +142,8 @@ AIDA is model-agnostic. Any LLM with tool-calling support works.
 | Client | Setup |
 |--------|-------|
 | **Claude Code** | `python3 aida.py` (automatic) |
-| **Kimi CLI** | `python3 aida.py` (automatic) |
+| **OpenAI Codex CLI** | `python3 aida.py --cli codex` (automatic) |
+| **Kimi Code CLI** | `python3 aida.py` (automatic) |
 | **External API** (OpenAI-compatible) | `python3 aida.py --base-url` |
 | **Claude Desktop** | MCP config |
 | **ChatGPT Desktop** | MCP config |

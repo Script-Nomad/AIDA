@@ -84,7 +84,7 @@ def setup_logging(
     # When both file and console logging are disabled (e.g. MCP mode), silence all
     # output by replacing any handlers basicConfig would add with a NullHandler.
     # Without this, basicConfig unconditionally attaches a StreamHandler(stderr)
-    # which leaks structured log lines into the terminal via kimi-cli / Claude Code.
+    # which leaks structured log lines into the terminal via Kimi Code CLI / Claude Code.
     if not enable_file_logging and not enable_console_logging:
         root_logger = logging.getLogger()
         root_logger.handlers = []

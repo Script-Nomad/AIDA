@@ -12,7 +12,7 @@ Get AIDA running in under a minute.
 
 Also needed for AI integration:
 - **Python** 3.10+ (`python3 --version`) — for the MCP server and CLI
-- **An AI client** that supports MCP — Claude Code or Kimi CLI recommended (see Step 5)
+- **An AI client** that supports MCP — Claude Code, Codex, Kimi, or Qwen recommended (see Step 5)
 
 > **Exegol users:** AIDA uses `aida-pentest` by default. You can switch to Exegol anytime in Settings.
 
@@ -92,7 +92,8 @@ Now you need to hook up AIDA to your AI assistant via MCP.
 | AI Client | Recommendation | Setup Method |
 |-----------|----------------|--------------|
 | **Claude Code** | Recommended | Use `aida.py` CLI (automatic) |
-| **Kimi CLI** | Recommended | Use `aida.py` CLI (automatic) |
+| **OpenAI Codex CLI** | Recommended | Use `aida.py --cli codex` (automatic) |
+| **Kimi Code CLI** | Recommended | Use `aida.py` CLI (automatic) |
 | **Qwen Code CLI** | Recommended | Use `aida.py --cli qwen` (automatic) |
 | **Vertex AI / External API** | Recommended | Use `aida.py` with flags |
 | **Antigravity** | Works | Manual MCP import (run `aida.py` once first) |
@@ -103,9 +104,9 @@ Now you need to hook up AIDA to your AI assistant via MCP.
 
 ---
 
-## AIDA CLI — Claude Code & Kimi
+## AIDA CLI — Claude Code, Codex, Kimi & Qwen
 
-The `aida.py` CLI is the recommended way to launch AIDA. It **auto-detects** which AI client you have installed (Claude Code, Kimi CLI, or Qwen Code) and configures everything automatically — MCP server, workspace, preprompt, and authentication.
+The `aida.py` CLI is the recommended way to launch AIDA. It **auto-detects** which AI client you have installed (Claude Code, OpenAI Codex CLI, Kimi Code CLI, or Qwen Code) and configures everything automatically — MCP server, workspace, preprompt, and authentication.
 
 ### Authentication (First Launch)
 
@@ -120,7 +121,7 @@ For non-interactive use (CI, scripts), set `AIDA_TOKEN` in the environment to by
 | Flag | Description |
 |------|-------------|
 | `-a`, `--assessment NAME` | Load a specific assessment directly |
-| `--cli claude\|kimi\|auto` | Force a specific CLI (default: auto-detect) |
+| `--cli claude\|codex\|kimi\|qwen\|auto` | Select a CLI (default: Claude Code; use `auto` for detection) |
 | `-m`, `--model MODEL` | Override the model used |
 | `--preprompt FILE` | Use a custom preprompt file |
 | `-y`, `--yes` | Auto-approve all AI actions |
@@ -177,21 +178,67 @@ You can verify if the MCP server is correctly loaded using `/mcp`
 
 ---
 
-## Kimi CLI
+## OpenAI Codex CLI
 
-**Kimi CLI** is fully supported as an alternative to Claude Code. The AIDA CLI handles the full setup automatically.
+Codex is fully supported through its documented CLI configuration surfaces.
+AIDA injects the preprompt as one-run developer instructions, sets the
+assessment workspace, and adds the AIDA MCP server without modifying your
+global `~/.codex/config.toml`.
 
 ### Prerequisites
 
-Install Kimi CLI:
-
 ```bash
-pip install kimi-cli
-# or
-uv tool install kimi-cli
+npm install -g @openai/codex
+codex login
 ```
 
-Then log in and configure Kimi CLI according to its documentation.
+### Launch AIDA with Codex
+
+```bash
+# Force Codex explicitly
+python3 aida.py --assessment "MyTarget" --cli codex
+
+# Select a model available to your Codex account
+python3 aida.py --assessment "MyTarget" --cli codex --model gpt-5.4
+
+# Pass an initial task
+python3 aida.py --assessment "MyTarget" --cli codex \
+  "Load the assessment and continue reconnaissance"
+```
+
+By default, Codex runs with `workspace-write` sandboxing and `on-request`
+approvals. AIDA MCP commands still follow the command approval mode configured
+in the AIDA dashboard.
+
+`--yes` maps to Codex's full-access bypass flag. It disables Codex approvals
+and sandboxing for that session, so use it only in a trusted, isolated
+environment:
+
+```bash
+python3 aida.py --assessment "MyTarget" --cli codex --yes
+```
+
+Inside Codex, use `/mcp` to verify that `aida-mcp` is active.
+
+---
+
+## Kimi Code CLI
+
+**Kimi Code CLI** is fully supported as an alternative to Claude Code. The AIDA CLI handles the full setup automatically.
+
+> **Note:** Kimi Code CLI is the Node.js successor of the legacy Python `kimi-cli`, which is being phased out. If you still have the old one, run `kimi migrate` after installing to carry over your config, MCP servers, and session history.
+
+### Prerequisites
+
+Install Kimi Code CLI:
+
+```bash
+curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash
+# or
+npm install -g @moonshot-ai/kimi-code
+```
+
+Then log in with `/login` (or `kimi login`) and configure Kimi Code CLI according to its documentation.
 
 ### Launch AIDA with Kimi
 
@@ -210,12 +257,11 @@ python3 aida.py --assessment "MyTarget" --cli kimi --yes
 ```
 
 The CLI automatically:
-- Generates a Kimi agent YAML file (`.aida/kimi-agent.yaml`)
-- Injects the AIDA system prompt with assessment context
-- Configures the MCP server for Kimi
+- Writes project instructions with assessment context to `.kimi-code/AGENTS.md` in the workspace
+- Configures the MCP server for Kimi (`.kimi-code/mcp.json` in the workspace)
 - Sets the working directory to the assessment workspace
 
-> **Note:** `--yes` maps to `--yolo` in Kimi CLI, which auto-approves all tool calls. Use with caution.
+> **Note:** `--yes` maps to `--yolo` in Kimi Code CLI, which auto-approves all tool calls. Use with caution. When a non-interactive prompt is passed, `--yolo` is omitted because Kimi Code CLI auto-approves tool calls in that mode by default.
 
 ---
 
@@ -249,7 +295,7 @@ For Antigravity, Gemini CLI, Claude Desktop, or ChatGPT, you need to manually co
 
 > Antigravity works great if you select Claude. Gemini is OK. Any MCP-compatible client should work.
 >
-> **Prefer Claude Code, Kimi, or Qwen?** Use `aida.py` instead — it handles all of this automatically.
+> **Prefer Claude Code, Codex, Kimi, or Qwen?** Use `aida.py` instead — it handles all of this automatically.
 
 ### Config Paths
 
@@ -431,13 +477,19 @@ sudo lsof -i :31337
 # List available assessments and pick one interactively
 python3 aida.py
 
-# Load a specific assessment (auto-detect CLI)
+# Load a specific assessment (Claude Code by default)
 python3 aida.py -a "MyTarget"
+
+# Auto-detect an installed CLI
+python3 aida.py -a "MyTarget" --cli auto
 
 # Force Claude Code
 python3 aida.py -a "MyTarget" --cli claude
 
-# Force Kimi CLI
+# Force OpenAI Codex CLI
+python3 aida.py -a "MyTarget" --cli codex
+
+# Force Kimi Code CLI
 python3 aida.py -a "MyTarget" --cli kimi
 
 # Auto-approve all actions

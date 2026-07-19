@@ -46,6 +46,14 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --dev|-d)     MODE="dev"; shift ;;
         --lan|-l)     TLS_MODE="lan"; shift ;;
+        --lan-port)
+            CADDY_HTTPS_PORT="${2:-}"
+            if [[ -z "$CADDY_HTTPS_PORT" || "$CADDY_HTTPS_PORT" == --* ]]; then
+                echo "Error: --lan-port requires a port number (e.g. --lan-port 8443)" >&2
+                exit 1
+            fi
+            shift 2
+            ;;
         --domain)
             TLS_MODE="domain"
             TLS_DOMAIN="${2:-}"
@@ -73,6 +81,7 @@ Usage: ./start.sh [OPTIONS]
 Modes (mutually exclusive — pick one):
   (default)              Local-only — http://localhost:31337   (no TLS, simplest)
   --lan, -l              LAN-shared — https://<LAN_IP>         (Caddy + self-signed)
+  --lan-port PORT        Custom HTTPS port for LAN mode (e.g. 8443 when 443 is taken)
   --domain X.Y           Public     — https://X.Y              (Caddy + Let's Encrypt)
   --dev, -d              Dev mode   — http://localhost:5173    (Vite hot reload)
   --dev --lan            Dev + LAN  — Vite accessible from your network (HTTP only)
@@ -85,6 +94,7 @@ Options:
 Examples:
   ./start.sh
   ./start.sh --lan
+  ./start.sh --lan --lan-port 8443
   ./start.sh --domain aida.example.com --email admin@example.com
 EOF
             exit 0
@@ -113,6 +123,16 @@ if [[ "$MODE" == "dev" && "$TLS_MODE" == "lan" ]]; then
     BIND="0.0.0.0"
 fi
 
+# Caddy ports (configurable via env vars or --lan-port)
+CADDY_HTTPS_PORT="${CADDY_HTTPS_PORT:-443}"
+CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-80}"
+
+# If a custom HTTPS port is used and HTTP is still at default 80, disable
+# the HTTP redirect to avoid port conflicts (user can override via CADDY_HTTP_PORT).
+if [[ "$CADDY_HTTPS_PORT" != "443" && "$CADDY_HTTP_PORT" == "80" ]]; then
+    CADDY_HTTP_PORT=""
+fi
+
 # ==============================================================================
 # MODE-SPECIFIC CONFIG
 # ==============================================================================
@@ -136,20 +156,69 @@ else
         lan)
             COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.tls.yml"
             export CADDY_BIND="0.0.0.0"
+            export CADDY_HTTP_PORT
+            export CADDY_HTTPS_PORT
             FRONTEND_URL=""           # filled in once we detect the LAN IP
             MODE_LABEL="LAN"
+            if [[ "$CADDY_HTTPS_PORT" != "443" || "$CADDY_HTTP_PORT" != "80" ]]; then
+                mkdir -p "$SCRIPT_DIR/.aida"
+                cat > "$SCRIPT_DIR/.aida/docker-compose.caddy-reset.yml" <<'EOF'
+services:
+  caddy:
+    ports: !reset []
+EOF
+                cat > "$SCRIPT_DIR/.aida/docker-compose.caddy-ports.yml" <<EOF
+services:
+  caddy:
+    ports:
+      - "${CADDY_BIND:-0.0.0.0}:${CADDY_HTTPS_PORT}:${CADDY_HTTPS_PORT}"
+EOF
+                if [[ -n "$CADDY_HTTP_PORT" ]]; then
+                    cat >> "$SCRIPT_DIR/.aida/docker-compose.caddy-ports.yml" <<EOF
+      - "${CADDY_BIND:-0.0.0.0}:${CADDY_HTTP_PORT}:${CADDY_HTTP_PORT}"
+EOF
+                fi
+                COMPOSE_FILES="$COMPOSE_FILES -f .aida/docker-compose.caddy-reset.yml -f .aida/docker-compose.caddy-ports.yml"
+            else
+                rm -f "$SCRIPT_DIR/.aida/docker-compose.caddy-reset.yml" "$SCRIPT_DIR/.aida/docker-compose.caddy-ports.yml"
+            fi
             ;;
         domain)
             COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.tls.yml"
             export CADDY_BIND="0.0.0.0"
+            export CADDY_HTTP_PORT
+            export CADDY_HTTPS_PORT
             FRONTEND_URL="https://${TLS_DOMAIN}"
             MODE_LABEL="Domain ($TLS_DOMAIN)"
+            if [[ "$CADDY_HTTPS_PORT" != "443" || "$CADDY_HTTP_PORT" != "80" ]]; then
+                mkdir -p "$SCRIPT_DIR/.aida"
+                cat > "$SCRIPT_DIR/.aida/docker-compose.caddy-reset.yml" <<'EOF'
+services:
+  caddy:
+    ports: !reset []
+EOF
+                cat > "$SCRIPT_DIR/.aida/docker-compose.caddy-ports.yml" <<EOF
+services:
+  caddy:
+    ports:
+      - "${CADDY_BIND:-0.0.0.0}:${CADDY_HTTPS_PORT}:${CADDY_HTTPS_PORT}"
+EOF
+                if [[ -n "$CADDY_HTTP_PORT" ]]; then
+                    cat >> "$SCRIPT_DIR/.aida/docker-compose.caddy-ports.yml" <<EOF
+      - "${CADDY_BIND:-0.0.0.0}:${CADDY_HTTP_PORT}:${CADDY_HTTP_PORT}"
+EOF
+                fi
+                COMPOSE_FILES="$COMPOSE_FILES -f .aida/docker-compose.caddy-reset.yml -f .aida/docker-compose.caddy-ports.yml"
+            else
+                rm -f "$SCRIPT_DIR/.aida/docker-compose.caddy-reset.yml" "$SCRIPT_DIR/.aida/docker-compose.caddy-ports.yml"
+            fi
             ;;
         *)
             # Default local-only: Nginx exposed on 31337, no Caddy
             export FRONTEND_BIND="127.0.0.1"
             FRONTEND_URL="http://localhost:${AIDA_PORT}"
             MODE_LABEL="Local"
+            rm -f "$SCRIPT_DIR/.aida/docker-compose.caddy-reset.yml" "$SCRIPT_DIR/.aida/docker-compose.caddy-ports.yml"
             ;;
     esac
 fi
@@ -241,7 +310,7 @@ check_port() {
     local service=$2
     # Docker runtimes (OrbStack, Docker Desktop) forward container ports through
     # their own process — they will always show up on our ports. Not a conflict.
-    local docker_runtimes="OrbStack|com.docker|dockerd|Docker"
+    local docker_runtimes="OrbStack|com.docker|dockerd|Docker|docker-proxy|docker-pr"
 
     if command -v lsof &>/dev/null; then
         local process
@@ -268,8 +337,10 @@ check_port 8000 "Backend"    || PORT_CONFLICT=true
 if [[ "$MODE" == "dev" ]]; then
     check_port 5173 "Frontend (Vite)" || PORT_CONFLICT=true
 elif [[ -n "$TLS_MODE" ]]; then
-    check_port 443 "Caddy HTTPS" || PORT_CONFLICT=true
-    check_port 80  "Caddy HTTP"  || PORT_CONFLICT=true
+    check_port "$CADDY_HTTPS_PORT" "Caddy HTTPS" || PORT_CONFLICT=true
+    if [[ -n "$CADDY_HTTP_PORT" ]]; then
+        check_port "$CADDY_HTTP_PORT" "Caddy HTTP"  || PORT_CONFLICT=true
+    fi
 else
     check_port 31337 "Frontend (Nginx)" || PORT_CONFLICT=true
 fi
@@ -277,6 +348,9 @@ fi
 if [[ "$PORT_CONFLICT" == "true" ]]; then
     echo ""
     warn "Port conflict detected!"
+    if [[ "$TLS_MODE" == "lan" && -n "$CADDY_HTTP_PORT" ]]; then
+        warn "Tip: run with --lan-port 8443 to skip port 80/443 entirely"
+    fi
     read -p "Continue anyway? (y/N): " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -328,30 +402,32 @@ if [[ -n "$TLS_MODE" ]]; then
             echo "}"
         } > "$SCRIPT_DIR/.aida/Caddyfile"
     else
-        cat > "$SCRIPT_DIR/.aida/Caddyfile" <<'EOF'
-{
-    admin off
-    auto_https off
-}
-
-:80 {
-    redir https://{host}{uri} 301
-}
-
-:443 {
-    tls {
-        on_demand
-        issuer internal
-    }
-
-    reverse_proxy frontend:80 {
-        header_up Host              {upstream_hostport}
-        header_up X-Real-IP         {remote_host}
-        header_up X-Forwarded-For   {remote_host}
-        header_up X-Forwarded-Proto {scheme}
-    }
-}
-EOF
+        {
+            echo "{"
+            echo "    admin off"
+            echo "    auto_https off"
+            echo "}"
+            echo ""
+            if [[ -n "$CADDY_HTTP_PORT" ]]; then
+                echo ":${CADDY_HTTP_PORT} {"
+                echo "    redir https://{host}{uri} 301"
+                echo "}"
+                echo ""
+            fi
+            echo ":${CADDY_HTTPS_PORT} {"
+            echo "    tls {"
+            echo "        on_demand"
+            echo "        issuer internal"
+            echo "    }"
+            echo ""
+            echo "    reverse_proxy frontend:80 {"
+            echo "        header_up Host              {upstream_hostport}"
+            echo "        header_up X-Real-IP         {remote_host}"
+            echo "        header_up X-Forwarded-For   {remote_host}"
+            echo "        header_up X-Forwarded-Proto {scheme}"
+            echo "    }"
+            echo "}"
+        } > "$SCRIPT_DIR/.aida/Caddyfile"
     fi
 
     CADDYFILE_HASH_AFTER=$(shasum "$SCRIPT_DIR/.aida/Caddyfile" 2>/dev/null | awk '{print $1}')
@@ -481,20 +557,39 @@ if [[ "$MODE" == "dev" && "$TLS_MODE" == "lan" ]]; then
     FRONTEND_URL="http://${HOST_IP}:5173"
 
 elif [[ "$TLS_MODE" == "lan" ]]; then
-    # Prod LAN — Caddy on 443 with self-signed
+    # Prod LAN — Caddy on custom or 443 with self-signed
     HOST_IP=$(detect_lan_ip)
     if [[ -z "$HOST_IP" ]]; then
         warn "Could not auto-detect LAN IP."
         read -rp "Enter your machine's LAN IP (e.g. 192.168.1.10): " HOST_IP
     fi
     log "LAN IP: $HOST_IP"
-    export BACKEND_CORS_ORIGINS="https://${HOST_IP},https://localhost,https://127.0.0.1"
-    FRONTEND_URL="https://${HOST_IP}"
+    if [[ "$CADDY_HTTPS_PORT" == "443" ]]; then
+        export BACKEND_CORS_ORIGINS="https://${HOST_IP},https://localhost,https://127.0.0.1"
+        FRONTEND_URL="https://${HOST_IP}"
+    else
+        export BACKEND_CORS_ORIGINS="https://${HOST_IP}:${CADDY_HTTPS_PORT},https://localhost:${CADDY_HTTPS_PORT},https://127.0.0.1:${CADDY_HTTPS_PORT}"
+        FRONTEND_URL="https://${HOST_IP}:${CADDY_HTTPS_PORT}"
+    fi
 
 elif [[ "$TLS_MODE" == "domain" ]]; then
     # Prod domain — Caddy on 443 with Let's Encrypt
     export BACKEND_CORS_ORIGINS="https://${TLS_DOMAIN}"
     FRONTEND_URL="https://${TLS_DOMAIN}"
+fi
+
+# ==============================================================================
+# PERSIST MODE CONFIG (for restart.sh)
+# ==============================================================================
+
+if [[ -n "$TLS_MODE" ]]; then
+    mkdir -p "$SCRIPT_DIR/.aida"
+    cat > "$SCRIPT_DIR/.aida/mode-config" <<EOF
+CADDY_HTTP_PORT=${CADDY_HTTP_PORT}
+CADDY_HTTPS_PORT=${CADDY_HTTPS_PORT}
+EOF
+else
+    rm -f "$SCRIPT_DIR/.aida/mode-config"
 fi
 
 # ==============================================================================
@@ -609,7 +704,7 @@ elif [[ "$TLS_MODE" == "domain" ]]; then
     # Let's Encrypt issuance can take 30-60s on first request
     wait_for_service "Caddy" "curl -sfk https://localhost" 180 || { error "Caddy (TLS) did not start. Check: $COMPOSE logs caddy"; exit 1; }
 elif [[ "$TLS_MODE" == "lan" ]]; then
-    wait_for_service "Caddy" "curl -sfk https://localhost" 90 || { error "Caddy (LAN) did not start. Check: $COMPOSE logs caddy"; exit 1; }
+    wait_for_service "Caddy" "curl -sfk https://localhost:${CADDY_HTTPS_PORT}" 90 || { error "Caddy (LAN) did not start. Check: $COMPOSE logs caddy"; exit 1; }
 else
     wait_for_service "Frontend" "curl -sf http://localhost:${AIDA_PORT}" 90 || { error "Frontend (Nginx) did not start. Check: $COMPOSE logs frontend"; exit 1; }
 fi

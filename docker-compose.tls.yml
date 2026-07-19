@@ -36,9 +36,8 @@ services:
       frontend:
         condition: service_started
     healthcheck:
-      # `wget --spider http://127.0.0.1:80/` returns 0 on the 301 redirect
-      # that Caddy serves on port 80, which is enough to confirm liveness.
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/"]
+      # Checks the HTTPS port directly (works with custom ports too).
+      test: ["CMD-SHELL", "wget --no-check-certificate --no-verbose --tries=1 --spider https://127.0.0.1:$${CADDY_HTTPS_PORT:-443}/"]
       interval: 30s
       timeout: 10s
       retries: 3

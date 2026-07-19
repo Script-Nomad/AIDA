@@ -149,6 +149,10 @@ function McpAccessSection() {
   function clientSnippet(key) {
     const url = mcpUrl();
     const token = key.full_key;
+    if (clientTab === 'codex') {
+      return `export AIDA_MCP_API_KEY="${token}"
+codex mcp add aida --url ${url} --bearer-token-env-var AIDA_MCP_API_KEY`;
+    }
     if (clientTab === 'claude-desktop') {
       return JSON.stringify(
         {
@@ -424,6 +428,7 @@ function McpAccessSection() {
               <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-700 mb-2">
                 {[
                   { id: 'claude-code', label: 'Claude Code' },
+                  { id: 'codex', label: 'Codex' },
                   { id: 'claude-desktop', label: 'Claude Desktop' },
                   { id: 'cursor', label: 'Cursor' },
                 ].map((t) => (
